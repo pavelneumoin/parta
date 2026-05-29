@@ -1,123 +1,217 @@
 # Парта
 
-Цифровая тетрадь для класса с live-наблюдением учителя.
+**Цифровая тетрадь для класса.** Видно каждого. Слышно никого.
 
-**Не Miro, не LMS.** Один шаблон → 28 индивидуальных рабочих листов → мозаика учителя на одном экране → подсказка красным поверх работы ученика.
+28 учеников — 28 рабочих листов на экране учителя в реальном времени. Ученик пишет — учитель видит. Подсказать тихо красным поверх работы, не вызывая к доске.
+
+---
+
+## Стек
+
+| Слой | Технология |
+|---|---|
+| Framework | Next.js 15 (App Router, React 19) |
+| Language | TypeScript 5 strict |
+| Database | Prisma 6 + SQLite (dev) / PostgreSQL (prod) |
+| Auth | Auth.js v5 (Credentials + JWT) |
+| Handwriting | perfect-freehand + Pointer Events API |
+| Styles | Tailwind CSS 3 (кастомная палитра) |
+| Tests | Vitest (unit + integration) |
+| PDF | pdf.js (client render), pdf-lib (server) |
 
 ## Структура репо
 
 ```
 Parta/
-├── prototype/              ← standalone handwriting-прототип (1 HTML файл)
-│   ├── handwriting.html    ← открыть в браузере или серве `python -m http.server`
-│   └── TESTING.md          ← чек-лист тестирования на планшете
 ├── web/                    ← основное Next.js приложение
-│   ├── src/
-│   │   ├── app/            ← App Router: страницы и API
-│   │   │   ├── (app)/      ← защищённая зона учителя (/app, /app/classes, /app/lessons, /app/session/[id])
-│   │   │   ├── api/        ← REST API: strokes, sessions, workspaces
-│   │   │   ├── j/[code]/   ← вход ученика по коду урока
-│   │   │   ├── s/[wsid]/   ← ученический холст
-│   │   │   ├── signin/     ← вход учителя
-│   │   │   └── signup/     ← регистрация
-│   │   ├── auth.ts         ← Auth.js v5 конфиг
-│   │   ├── components/     ← переиспользуемые компоненты
-│   │   ├── lib/            ← Prisma, токены, QR, штрихи
-│   │   └── middleware.ts   ← защита /app, редиректы
 │   ├── prisma/
 │   │   ├── schema.prisma   ← доменная модель
-│   │   ├── seed.ts         ← демо-данные
-│   │   └── dev.db          ← SQLite БД (в .gitignore)
-│   ├── .env                ← локальные переменные
-│   └── package.json
-├── STATUS.md               ← состояние работы ночи 2026-05-25/26
-└── README.md               ← этот файл
+│   │   ├── migrations/     ← история миграций
+│   │   └── seed.ts         ← demo-данные
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── api/        ← REST-эндпоинты
+│   │   │   ├── app/        ← защищённые страницы учителя /app/*
+│   │   │   ├── s/[wsid]/   ← холст ученика (без авторизации)
+│   │   │   ├── j/[code]/   ← вход по коду / QR
+│   │   │   ├── pricing/    ← страница цен
+│   │   │   ├── about/      ← о проекте
+│   │   │   └── page.tsx    ← лендинг
+│   │   ├── components/     ← переиспользуемые компоненты
+│   │   └── lib/            ← stamps, rateLimit, stroke, qr, ...
+│   ├── docker-compose.yml  ← локальная Postgres для разработки
+│   └── .env.example        ← пример переменных окружения
+├── design/
+│   ├── PROMPT.md           ← дизайн-бриф
+│   └── CRITIQUE.md         ← разбор UI/UX
+├── prototype/              ← ранний HTML-прототип рукописного ввода
+├── STATUS.md               ← текущее состояние проекта
+└── NIGHT_PLAN.md           ← план ночной разработки
 ```
 
 ## Быстрый старт
 
-### 1. Прототип handwriting (без сборки, для тестов на планшете)
+### Предварительные требования
 
-```powershell
-cd E:\YA\YandexDisk\Parta\prototype
-python -m http.server 8765
-# открыть http://localhost:8765/handwriting.html
-# c планшета — http://<IP-компа>:8765/handwriting.html
+- Node.js ≥ 20
+- npm ≥ 10
+
+### 1. Установить зависимости
+
+```bash
+cd Parta/web
+npm install
 ```
 
-Чек-лист тестирования — в `prototype/TESTING.md`.
+### 2. Настроить переменные окружения
 
-### 2. Полное приложение (Next.js)
-
-```powershell
-cd E:\YA\YandexDisk\Parta\web
-npm install                # если ещё не делал
-npm run dev                # запуск на http://localhost:3030
+```bash
+cp .env.example .env.local
 ```
 
-Демо-аккаунт уже засеян: `demo@parta.ru` / `demo123`.
+Отредактировать `.env.local`:
+```env
+DATABASE_URL="file:./dev.db"
+AUTH_SECRET="любая-строка-минимум-32-символа"
+AUTH_URL="http://localhost:3030"
+```
 
-В нём есть класс «7А» с 12 учениками и 3 шаблонных урока (клетка, координаты, линии).
+В `prisma/schema.prisma` убедитесь, что провайдер — `sqlite`:
+```prisma
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+```
 
-### 3. End-to-end сценарий (5 минут)
+### 3. Инициализировать базу данных
 
-1. Открой `http://localhost:3030` → **Войти** → demo@parta.ru / demo123.
-2. На дашборде нажми **Уроки → «Линейные уравнения» → ▶ Начать**.
-3. На экране — QR-код и 6-значный код (например, `347659`).
-4. На втором устройстве (или вкладке) открой `http://localhost:3030/j/347659`.
-5. Выбери ученика из списка → откроется его холст.
-6. Напиши пером/пальцем.
-7. Вернись на вкладку учителя → плитка ученика подсветится, счётчик штрихов растёт.
+```bash
+npm run db:push    # применить схему (без миграций, для dev)
+npm run db:seed    # создать demo@parta.ru / demo123
+```
 
-## Технологии
+### 4. Запустить
 
-- **Next.js 15** (App Router, React 19)
-- **Prisma 6** + **SQLite** (для dev; Postgres — для prod)
-- **Auth.js v5** (Credentials, JWT-сессии)
-- **perfect-freehand** (handwriting)
-- **Pointer Events API** (stylus / touch / mouse)
-- **Tailwind CSS 3** (без кастомных шрифтов)
-- **TypeScript strict**
+```bash
+npm run dev
+# → http://localhost:3030
+```
+
+Войти: **demo@parta.ru** / **demo123**
+
+### 5. Протестировать e2e (5 минут)
+
+1. Войти → Уроки → «Линейные уравнения» → **▶ Начать**
+2. На второй вкладке открыть `http://localhost:3030/j/<код>`
+3. Выбрать ученика → написать на холсте
+4. Вернуться к учителю — плитка ученика обновится с превью
 
 ## Команды
 
-```powershell
-npm run dev          # запуск dev-сервера (порт 3030)
-npm run build        # production-сборка
-npm run typecheck    # tsc --noEmit
-npm run test         # vitest run — unit-тесты (34 в текущем состоянии)
-npm run test:watch   # vitest watch mode
-npm run db:push      # обновить БД из schema
-npm run db:migrate   # создать миграцию
-npm run db:studio    # Prisma Studio (визуальный браузер БД)
-npm run db:seed      # запустить seed.ts
+| Команда | Описание |
+|---|---|
+| `npm run dev` | Dev-сервер на порту 3030 |
+| `npm run build` | Production build |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run lint` | ESLint |
+| `npm test` | Vitest unit-тесты |
+| `npm run db:push` | Синхронизировать схему (dev) |
+| `npm run db:migrate` | Создать migration (dev) |
+| `npm run db:migrate-prod` | Применить миграции в prod (`prisma migrate deploy`) |
+| `npm run db:reset` | Сбросить БД (dev only!) |
+| `npm run db:seed` | Заполнить demo-данными |
+| `npm run db:studio` | Prisma Studio (GUI) |
+
+## Ключевые архитектурные решения
+
+### Рукописный ввод
+- `perfect-freehand` строит сглаженные SVG-path из точек `[x, y, pressure]`
+- Palm rejection: блокируем `touch`, пропускаем `pen` и `mouse`
+- Штрихи хранятся как `Json` в Prisma (массив точек)
+- Синхронизация: polling каждые 600 мс (не WebSocket — меньше сложности)
+
+### Слои (layers)
+- Каждый штрих — `layer: "student" | "teacher"`
+- Сервер enforce'ит роль независимо от клиента
+- Учительский overlay (красный) видят только ученик и учитель этого workspace
+
+### Штампы учителя
+- `lib/stamps.ts` — 4 типа (+/−/?/✓), пакет из 1-2 готовых штрихов
+- Ставятся кликом, генерируют обычные штрихи — без отдельной логики
+- 14 unit-тестов покрывают все форматы и функцию `stampToStrokes`
+
+### Превью мозаики
+- Ученик каждые 4 сек рендерит офф-скрин canvas `200×280 PNG`, отправляет как base64
+- Учитель получает мозаику через polling 2.5 сек
+- PNG хранится в `WorkspacePreview.pngBytes` (Bytes, ≤80 КБ)
+
+### Rate limiting
+- In-memory sliding window (60 сек окно)
+- 120 req/min на `/api/strokes` (по IP)
+- 60 req/min на `/api/sessions/.../broadcast` (по teacherId)
+- `lib/rateLimit.ts` с автоматическим GC каждые 10 мин
+
+## Переменные окружения
+
+| Переменная | Описание |
+|---|---|
+| `DATABASE_URL` | Строка подключения (SQLite или PostgreSQL) |
+| `AUTH_SECRET` | Секрет Auth.js (мин. 32 символа) |
+| `AUTH_URL` | Базовый URL для OAuth callback |
+| `S3_ENDPOINT` | (опционально) S3-хранилище для PDF |
+| `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` | S3-реквизиты |
+
+## Production
+
+### Переключение на PostgreSQL
+
+1. Заменить провайдер в `schema.prisma`:
+```prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
 ```
 
-## Что уже работает
+2. Запустить миграции:
+```bash
+npm run db:migrate-prod
+```
 
-- Создание классов, учеников, уроков (включая загрузку PDF)
-- Стартовый QR + 6-значный код, вход ученика без регистрации
-- Рукописный ввод (Canvas + perfect-freehand + Pointer Events + palm rejection)
-- Multi-page PDF навигация
-- Live-мозаика учителя с реальными PNG-превью (4 сек polling)
-- Учительский overlay: красный поверх работы ученика
-- «Подсказка всему классу» (broadcast одного штриха всем 28 ученикам)
-- «Поднять руку» — кнопка ученика + тост учителю + индикатор в мозаике
-- Стирание со синком (soft delete)
-- Real-time закрытие сессии (без F5)
-- Экспорт PNG одной страницы, ZIP всего класса
-- «Сдать работу» — статус submitted, плитка с зелёным значком
-- Финал-экран ученика после закрытия урока
-- Расписание уроков + секция «Сегодня» на дашборде
-- 34 unit-теста
+### Локальная Postgres (Docker)
 
-## Что НЕ сделано (см. STATUS.md)
+```bash
+docker compose up -d
+# credentials: parta/parta@localhost:5432/parta
+```
 
-Это MVP, готовый к первому живому тесту с учениками. Точечные пропуски:
-- WebSocket — пока polling 2.5–4 сек.
-- Postgres + деплой — пока SQLite + localhost.
-- Аналитика, замечания, шаблоны из библиотеки — V2.
-- Server-side рендер PDF в высоком разрешении (ZIP содержит миниатюры 200×280).
-- e2e-тесты Playwright — пока только unit + ручной smoke.
+### Healthcheck
 
-Подробности — в `STATUS.md`.
+`GET /api/health` возвращает:
+```json
+{ "status": "ok", "uptime_ms": 12345, "uptime_s": 12, "db": "ok", "ts": "..." }
+```
+
+Статус 503 при недоступности БД.
+
+## Что работает
+
+- Создание классов, учеников, уроков (PDF + встроенные шаблоны)
+- QR-вход ученика без регистрации
+- Рукописный ввод с palm rejection и multi-page PDF
+- Live-мозаика учителя (real-time превью 28 листов)
+- Учительский overlay красным поверх работы ученика
+- «Подсказка всему классу» (broadcast одного штриха)
+- Штампы учителя (+/−/?/✓)
+- Текстовые комментарии к работам
+- «Поднять руку» + индикатор в мозаике
+- «Сдать работу» + галерея сданных работ
+- Экспорт: PNG одной страницы, ZIP всего класса
+- Аналитика класса за 7 дней (отстающие, % сдачи)
+- Rate limiting, /api/health, PWA manifest
+- 22 unit-теста (stamps + rateLimit)
+
+## Лицензия
+
+Proprietary. © 2026 Парта.
