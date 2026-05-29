@@ -1,6 +1,32 @@
-# Парта · STATUS 2026-05-27
+# Парта · STATUS 2026-05-29
 
 Ночная автономная сессия: от продуктового видения до работающего MVP-каркаса.
+
+## Прирост 2026-05-27→29 (ночной план, итерации It-1…It-17)
+
+Прогон по `NIGHT_PLAN.md`. Каждая итерация — typecheck + vitest зелёные, отдельный коммит.
+**Git инициализирован** в этой сессии (`E:\YA\YandexDisk\Parta\.git`) — раньше репозитория не было.
+
+### Критика + production basics
+- **It-1 · AppHeader** — единый хедер `/app/*`, активная навигация через `AppNavLink` (usePathname + aria-current), email справа. `STAMPS` вынесены в `lib/stamps.ts` + **14 unit-тестов**.
+- **It-2 · UX-copy пустых состояний** — Empty-компоненты (lessons/classes/dashboard/lesson-detail) иконка+текст+CTA; нативный `confirm()` заменён инлайн-подтверждением в StudentCanvas; `✋` → SVG.
+- **It-5 · Текст-комментарии учителя** — модель `Comment` (миграция `20260529_teacher_comments`), API POST+GET `/api/workspaces/[id]/comments`, UI: учитель пишет, ученик видит read-only (poll 10s).
+- **It-6 · Просмотр сданных** — `/app/session/[id]/submitted`: grid PNG-превью, имя+время+число штрихов, кнопка в хедере.
+- **It-7 · Healthcheck + rate-limit** — `/api/health` (DB ping + uptime + ts, 503 при сбое), `lib/rateLimit.ts` (sliding-window, GC 10мин), 120/мин strokes + 60/мин broadcast. **+8 тестов (22 всего)**.
+- **It-8 · PWA** — `manifest.ts`, `apple-icon.tsx` (180×180 ImageResponse), полный Metadata в `layout.tsx` (openGraph/twitter/appleWebApp/robots).
+- **It-9 · Postgres-готовность** — `docker-compose.yml` (postgres:16 + healthcheck), `.env.example` расширен, `db:migrate-prod`/`db:reset`/`db:generate` в package.json.
+
+### Маркетинг + полировка
+- **It-13 · Лендинг** — секция «Как работает» (3 шага) + `PricingTeaser` (2 карточки), обновлён footer.
+- **It-14 · Цены** — `/pricing`: 3 плана (0/590/990 ₽) + FAQ.
+- **It-15+27 · Статика** — `/about` (манифест, принципы), `/privacy` (9 секций), `/contact` (3 email + форма).
+- **It-16+17 · Аудит + доки** — TODO/FIXME аудит (реальных долгов нет), README переписан, добавлен `CONTRIBUTING.md`.
+
+### Проверки
+- `npm run typecheck` — чисто.
+- `npm test` (unit) — **22 теста зелёные** (stamps 14 + rateLimit 8). Integration-тесты требуют живой сервер на :3030.
+
+---
 
 ## Прирост 2026-05-27 (восьмая итерация) — дизайн, штампы, аналитика
 
