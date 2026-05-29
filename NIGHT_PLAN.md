@@ -15,7 +15,7 @@
 - [x] **It-2. UX-copy для пустых состояний** — Empty компоненты (lessons/classes/dashboard/lesson-detail) с иконкой+текстом+CTA; нативный `confirm()` заменён инлайн-подтверждением в StudentCanvas; `✋` заменён на SVG; логотип в StudentCanvas исправлен (#4f7cff→#1e6f5c); копи CloseSessionButton улучшена.
 - [ ] **It-3. Accessibility-аудит** через `design:accessibility-review` — контраст палитры (WebAIM), touch targets ≥ 44×44, фокус-кольца, screen reader labels на иконках.
 - [ ] **It-4. Тесты для штампов** — unit-тест placeStamp, integration-тест API (учитель ставит штамп, layer=teacher).
-- [ ] **It-5. Учительские текст-комментарии** — `Comment` модель, прикреплённая к workspace, показывается ученику над листом. Без редактирования (immutable, audit).
+- [x] **It-5. Учительские текст-комментарии** — `Comment` модель (migration `20260529_teacher_comments`), API POST+GET `/api/workspaces/[id]/comments`, UI: учитель → кнопка 💬 Заметка + floating панель ввода, ученик → read-only карточки над листом (poll 10s).
 - [x] **It-6. Просмотр submitted-работ отдельно** — `/app/session/[id]/submitted`: grid 5×N с PNG-превью, имя+время+число штрихов, ссылка на полный холст; кнопка «Сданные работы (N)» в хедере session-страницы.
 - [x] **It-7. Healthcheck + рейт-лимит** — `/api/health` (DB ping + uptime + ts), `lib/rateLimit.ts` sliding-window (GC 10 мин), 120/мин на `/api/strokes`, 60/мин на `/api/sessions/.../broadcast`. +8 unit-тестов (22 всего).
 - [x] **It-8. PWA манифест + meta-теги** — `app/manifest.ts` (Next.js auto-serve), `app/apple-icon.tsx` (180×180 ImageResponse), `layout.tsx` полный Metadata с openGraph/twitter/appleWebApp/manifest/robots.
@@ -78,5 +78,6 @@
 | 8 | 08:10 | 08:18 | manifest.ts, apple-icon.tsx (ImageResponse), layout.tsx: og/twitter/appleWebApp/robots meta |
 | 9 | 08:18 | 08:25 | docker-compose.yml (postgres:16), .env.example расширен, package.json: db:migrate-prod/reset/generate |
 | 6 | 08:25 | 08:35 | /session/[id]/submitted: grid превью сданных работ, PNG lazy-load, кнопка в хедере session-страницы |
+| 5 | 08:35 | 08:55 | Comment модель + migration, API comments GET+POST, UI учитель(ввод)/ученик(read-only), poll 10s |
 
 (заполняется после каждой итерации)

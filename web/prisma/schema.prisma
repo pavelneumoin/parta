@@ -28,6 +28,7 @@ model Teacher {
   lessons      Lesson[]
   sessions     Session[]
   templates    TemplateFile[]
+  comments     Comment[]
 
   @@index([schoolId])
 }
@@ -71,6 +72,22 @@ model Student {
   workspaces Workspace[]
 
   @@index([classId])
+}
+
+// -------------------------------------------------------------- КОММЕНТАРИИ УЧИТЕЛЯ
+
+model Comment {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  teacherId   String
+  teacher     Teacher   @relation(fields: [teacherId], references: [id])
+  text        String    // иммутабельный (нет updatedAt/deletedAt) — нельзя редактировать
+  pageIndex   Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  @@index([workspaceId])
+  @@index([teacherId])
 }
 
 // -------------------------------------------------------------- УРОКИ (ШАБЛОНЫ)
@@ -156,6 +173,7 @@ model Workspace {
 
   strokes         Stroke[]
   previews        WorkspacePreview[]
+  comments        Comment[]
 
   @@unique([sessionId, studentId])
   @@index([sessionId])

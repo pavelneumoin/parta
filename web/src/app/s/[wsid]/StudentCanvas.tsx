@@ -111,6 +111,11 @@ export function StudentCanvas(props: Props) {
     submittedRef.current = submitted;
   }, [submitted]);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
+  // комментарии учителя: список + UI
+  const [comments, setComments] = useState<{ id: string; text: string; pageIndex: number; createdAt: string }[]>([]);
+  const [commentText, setCommentText] = useState("");
+  const [commentOpen, setCommentOpen] = useState(false);
+  const [commentPosting, setCommentPosting] = useState(false);
   // broadcast-режим для учителя: штрихи летят на /api/sessions/[id]/broadcast и
   // размножаются по всем workspace'ам сессии
   const [broadcast, setBroadcast] = useState(false);
@@ -716,6 +721,32 @@ export function StudentCanvas(props: Props) {
     return () => clearInterval(i);
   }, [props.workspaceId, token, props.templateKind, closed]);
 
+  // Загружаем комментарии учителя — один раз при монтировании, потом по poll раз в 10 сек
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const headers: Record<string, string> = {};
+        if (token) headers["x-anon-token"] = token;
+        const r = await fetch(
+          `/api/workspaces/${props.workspaceId}/comments`,
+          { headers },
+        );
+        if (cancelled || !r.ok) return;
+        const data = await r.json();
+        if (!cancelled) setComments(data.comments ?? []);
+      } catch {
+        // сеть — игнорим
+      }
+    };
+    load();
+    const i = setInterval(load, 10_000);
+    return () => {
+      cancelled = true;
+      clearInterval(i);
+    };
+  }, [props.workspaceId, token]);
+
   const isTeacher = viewerRole === "teacher";
 
   // экспорт текущей страницы как PNG в высоком разрешении
@@ -913,6 +944,15 @@ export function StudentCanvas(props: Props) {
               >
                 ↓ PNG
               </button>
+              <button
+                onClick={() => setCommentOpen((v) => !v)}
+                className={`px-2 py-1 rounded border transition ${
+                  commentOpen ? "bg-accent text-paper border-accent" : "border-rule hover:bg-rule/40"
+                }`}
+                title="Добавить текстовый комментарий к работе ученика"
+              >
+                💬 Заметка
+              </button>
             </>
           )}
           {closed && (
@@ -1013,6 +1053,97 @@ export function StudentCanvas(props: Props) {
               >
                 ›
               </button>
+            </div>
+          )}
+
+          {/* Заметки учителя: учитель видит панель ввода, ученик — read-only карточки */}
+          {isTeacher && commentOpen && (
+            <div className="absolute bottom-4 right-4 z-30 w-72 rounded-xl bg-paper border border-rule shadow-xl p-4">
+              <p className="text-xs font-semibold mb-2 text-dim uppercase tracking-wide">
+                Текстовый комментарий
+              </p>
+              <textarea
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                placeholder="Напишите замечание или подсказку…"
+                rows={3}
+                className="w-full px-2.5 py-2 rounded-lg border border-rule bg-chalk text-sm outline-none focus:border-accent transition resize-none"
+              />
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => setCommentOpen(false)}
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-rule hover:bg-rule/40 transition text-xs"
+                >
+                  Отмена
+                </button>
+                <button
+                  disabled={commentPosting || commentText.trim().length === 0}
+                  onClick={async () => {
+                    const text = commentText.trim();
+                    if (!text) return;
+                    setCommentPosting(true);
+                    try {
+                      const r = await fetch(
+                        `/api/workspaces/${props.workspaceId}/comments`,
+                        {
+                          method: "POST",
+                          headers: { "content-type": "application/json" },
+                          body: JSON.stringify({ text, pageIndex: pageRef.current }),
+                        },
+                      );
+                      if (r.ok) {
+                        const data = await r.json();
+                        setComments((prev) => [...prev, data.comment]);
+                        setCommentText("");
+                        setCommentOpen(false);
+                      }
+                    } catch {
+                      // молча
+                    } finally {
+                      setCommentPosting(false);
+                    }
+                  }}
+                  className="flex-1 px-3 py-1.5 rounded-lg bg-accent text-paper hover:opacity-90 transition text-xs font-medium disabled:opacity-50"
+                >
+                  {commentPosting ? "Отправка…" : "Отправить"}
+                </button>
+              </div>
+              {comments.filter((c) => (c.pageIndex ?? 0) === currentPage).length > 0 && (
+                <div className="mt-3 pt-3 border-t border-rule">
+                  <p className="text-xs text-dim mb-1.5">Ранее оставлено:</p>
+                  <ul className="space-y-1.5 max-h-28 overflow-y-auto">
+                    {comments
+                      .filter((c) => (c.pageIndex ?? 0) === currentPage)
+                      .map((c) => (
+                        <li key={c.id} className="text-xs bg-chalk rounded-lg px-2.5 py-1.5">
+                          {c.text}
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!isTeacher && comments.filter((c) => (c.pageIndex ?? 0) === currentPage).length > 0 && (
+            <div className="absolute top-3 right-3 z-20 w-64">
+              <div className="rounded-xl bg-paper border border-accent/30 shadow-md p-3">
+                <p className="text-xs font-semibold mb-2 text-accent uppercase tracking-wide">
+                  Замечания учителя
+                </p>
+                <ul className="space-y-2">
+                  {comments
+                    .filter((c) => (c.pageIndex ?? 0) === currentPage)
+                    .map((c) => (
+                      <li
+                        key={c.id}
+                        className="text-sm bg-chalk rounded-lg px-3 py-2 leading-snug"
+                      >
+                        {c.text}
+                      </li>
+                    ))}
+                </ul>
+              </div>
             </div>
           )}
 
