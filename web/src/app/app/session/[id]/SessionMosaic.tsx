@@ -32,6 +32,7 @@ export function SessionMosaic({ sessionId }: { sessionId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [sortBy, setSortBy] = useState<SortBy>("name");
+  const [helpOpen, setHelpOpen] = useState(false);
   // мапа workspaceId → последний known handRaisedAt (для detection изменений)
   const prevHandsRef = useRef<Map<string, string | null>>(new Map());
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -87,6 +88,51 @@ export function SessionMosaic({ sessionId }: { sessionId: string }) {
       if (timer) clearTimeout(timer);
     };
   }, [sessionId]);
+
+  // Горячие клавиши для живого урока. e.code — независимо от раскладки (рус/eng).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (e.key === "?") {
+        e.preventDefault();
+        setHelpOpen((v) => !v);
+        return;
+      }
+      if (e.key === "Escape") {
+        setHelpOpen(false);
+        setFilter("all");
+        return;
+      }
+
+      switch (e.code) {
+        case "KeyA":
+        case "Digit1":
+          setFilter("all");
+          break;
+        case "KeyR":
+          setFilter((f) => (f === "hand" ? "all" : "hand"));
+          break;
+        case "KeyZ":
+          setFilter((f) => (f === "idle" ? "all" : "idle"));
+          break;
+        case "KeyS":
+          setFilter((f) => (f === "submitted" ? "all" : "submitted"));
+          break;
+        default:
+          return;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   if (!state) {
     return <div className="text-dim text-center py-12">Подключаюсь…</div>;
@@ -198,6 +244,15 @@ export function SessionMosaic({ sessionId }: { sessionId: string }) {
         <SortChip active={sortBy === "strokes"} onClick={() => setSortBy("strokes")}>
           по штрихам
         </SortChip>
+
+        <button
+          onClick={() => setHelpOpen(true)}
+          className="ml-auto w-7 h-7 grid place-items-center rounded-full border border-rule text-dim hover:bg-rule/40 transition text-sm font-medium"
+          title="Горячие клавиши"
+          aria-label="Горячие клавиши"
+        >
+          ?
+        </button>
       </div>
 
       <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-7 gap-3">
@@ -221,7 +276,81 @@ export function SessionMosaic({ sessionId }: { sessionId: string }) {
           </div>
         ))}
       </div>
+
+      {helpOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-ink/40 flex items-center justify-center p-4"
+          onClick={() => setHelpOpen(false)}
+        >
+          <div
+            className="bg-paper rounded-2xl border border-rule shadow-xl max-w-sm w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Горячие клавиши"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg">Горячие клавиши</h3>
+              <button
+                onClick={() => setHelpOpen(false)}
+                className="text-dim hover:text-ink transition"
+                aria-label="Закрыть"
+              >
+                <XIcon className="w-5 h-5" />
+              </button>
+            </div>
+            <ul className="space-y-2.5 text-sm">
+              <ShortcutRow keys={["A", "1"]} desc="Показать всех" />
+              <ShortcutRow keys={["R"]} desc="Кто поднял руку" />
+              <ShortcutRow keys={["Z"]} desc="Кто завис" />
+              <ShortcutRow keys={["S"]} desc="Кто сдал работу" />
+              <ShortcutRow keys={["Esc"]} desc="Сбросить фильтр" />
+              <ShortcutRow keys={["?"]} desc="Эта справка" />
+            </ul>
+            <p className="text-xs text-dim mt-4">
+              Работают на любой раскладке клавиатуры. Повторное нажатие фильтра —
+              снова все.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function ShortcutRow({ keys, desc }: { keys: string[]; desc: string }) {
+  return (
+    <li className="flex items-center justify-between gap-4">
+      <span className="text-ink/80">{desc}</span>
+      <span className="flex gap-1">
+        {keys.map((k) => (
+          <kbd
+            key={k}
+            className="px-2 py-0.5 rounded border border-rule bg-chalk font-mono text-xs text-ink/70"
+          >
+            {k}
+          </kbd>
+        ))}
+      </span>
+    </li>
+  );
+}
+
+function XIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <line x1="6" y1="6" x2="18" y2="18" />
+      <line x1="18" y1="6" x2="6" y2="18" />
+    </svg>
   );
 }
 
