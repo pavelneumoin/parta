@@ -24,3 +24,15 @@ input, textarea, [contenteditable] {
   -webkit-user-select: text;
   user-select: text;
 }
+
+/* Видимый фокус для клавиатуры (a11y). :focus-visible не срабатывает на мышь,
+   поэтому кольцо видят только те, кто реально ходит с клавиатуры. */
+:focus-visible {
+  outline: 2px solid theme(colors.accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* убираем дефолтный outline там, где у нас своё :focus-visible-кольцо */
+:focus:not(:focus-visible) {
+  outline: none;
+}

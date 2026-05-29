@@ -21,7 +21,9 @@ const config: Config = {
         toolbar: "#1a1f2b",
         toolbarHover: "#2a3142",
         toolbarActive: "#3a4360",
-        dim:   "#7a7468"
+        // Вторичный текст. Был #7a7468 — 4.44:1 на paper, не дотягивал до WCAG AA (4.5:1).
+        // #6f695d даёт 5.22:1 на paper и 4.82:1 на chalk — AA проходит на обоих фонах.
+        dim:   "#6f695d"
       },
       fontFamily: {
         sans: [
