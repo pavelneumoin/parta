@@ -17,7 +17,7 @@
 - [ ] **It-4. Тесты для штампов** — unit-тест placeStamp, integration-тест API (учитель ставит штамп, layer=teacher).
 - [ ] **It-5. Учительские текст-комментарии** — `Comment` модель, прикреплённая к workspace, показывается ученику над листом. Без редактирования (immutable, audit).
 - [ ] **It-6. Просмотр submitted-работ отдельно** — `/app/session/[id]/submitted` со списком сданных + быстрый просмотр PNG превью.
-- [ ] **It-7. Healthcheck + рейт-лимит** — `/api/health` (DB ping + uptime), in-memory rate-limit на `/api/strokes` и `/api/sessions/.../broadcast`.
+- [x] **It-7. Healthcheck + рейт-лимит** — `/api/health` (DB ping + uptime + ts), `lib/rateLimit.ts` sliding-window (GC 10 мин), 120/мин на `/api/strokes`, 60/мин на `/api/sessions/.../broadcast`. +8 unit-тестов (22 всего).
 - [ ] **It-8. PWA манифест + meta-теги** — `manifest.webmanifest`, apple-touch-icon (SVG → tsx generator), описание и иконки.
 
 ### Ночь 2 (4 итерации; фичи + тесты)
@@ -74,5 +74,6 @@
 | 0 | 22:40 | 22:45 | План написан |
 | 1 | 22:50 | 00:55 | AppHeader (navlink active state, обновлены SVG-цвета), STAMPS вынесены в lib + 14 тестов |
 | 2 | 07:50 | 08:00 | UX-copy: Empty-состояния с иконками/CTA, инлайн-confirm вместо alert(), SVG вместо ✋ |
+| 7 | 08:00 | 08:10 | /api/health, rateLimit.ts (sliding-window + GC), rate-limit на strokes/broadcast, +8 тестов |
 
 (заполняется после каждой итерации)

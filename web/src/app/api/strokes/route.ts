@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { auth } from "@/auth";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -25,8 +26,16 @@ const batchSchema = z.object({
 /**
  * Принимаем пачку новых штрихов от ученика или учителя.
  * Идемпотентно по `Stroke.id` (UUID с клиента). Дубль = no-op.
+ *
+ * Rate limit: 120 req/min per IP (≈2 flush/s — соответствует FLUSH_MS=600ms).
  */
 export async function POST(req: NextRequest) {
+  // Rate-limit: 120 батчей в минуту на IP (2/с при FLUSH_MS=600мс)
+  const ip = getClientIp(req.headers);
+  if (!checkRateLimit(`strokes:${ip}`, 120)) {
+    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = batchSchema.safeParse(body);
   if (!parsed.success) {

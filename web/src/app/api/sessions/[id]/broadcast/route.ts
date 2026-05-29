@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { auth } from "@/auth";
 import { randomUUID } from "node:crypto";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,11 @@ export async function POST(
   const authz = await auth();
   const teacherId = authz?.user?.id;
   if (!teacherId) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+
+  // Rate-limit: 60 broadcast-батчей в минуту на учителя (≈1/с)
+  if (!checkRateLimit(`broadcast:${teacherId}`, 60)) {
+    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+  }
 
   const body = await req.json().catch(() => null);
   const parsed = schema.safeParse(body);
