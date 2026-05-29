@@ -1,0 +1,215 @@
+// Парта · доменная модель
+// Принципы: append-only штрихи, мягкие связи, JSONB для гибких полей.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // dev: SQLite (file:./dev.db). Для prod — поменять на postgresql и обновить DATABASE_URL.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// -------------------------------------------------------------- AUTH (учителя)
+
+model Teacher {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  schoolId     String?
+  school       School?   @relation(fields: [schoolId], references: [id])
+  plan         String    @default("free") // free | personal | school
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  classes      Class[]
+  lessons      Lesson[]
+  sessions     Session[]
+  templates    TemplateFile[]
+
+  @@index([schoolId])
+}
+
+model School {
+  id           String   @id @default(cuid())
+  name         String
+  region       String?
+  licenseUntil DateTime?
+  createdAt    DateTime @default(now())
+
+  teachers     Teacher[]
+}
+
+// -------------------------------------------------------------- КЛАСС И УЧЕНИКИ
+
+model Class {
+  id         String   @id @default(cuid())
+  teacherId  String
+  teacher    Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  name       String                 // "7А", "10-Б"
+  grade      Int?                   // 7, 10
+  subject    String   @default("math")
+  createdAt  DateTime @default(now())
+
+  students        Student[]
+  sessions        Session[]
+  defaultForLessons Lesson[] @relation("LessonDefaultClass")
+
+  @@index([teacherId])
+}
+
+model Student {
+  id         String   @id @default(cuid())
+  classId    String
+  class      Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  fullName   String                 // "Иванов Иван"
+  anonToken  String   @unique       // JWT-токен; не email/пароль
+  createdAt  DateTime @default(now())
+
+  workspaces Workspace[]
+
+  @@index([classId])
+}
+
+// -------------------------------------------------------------- УРОКИ (ШАБЛОНЫ)
+
+model Lesson {
+  id            String   @id @default(cuid())
+  teacherId     String
+  teacher       Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  title         String
+  templateKind  String   @default("blank_grid")   // pdf | image | blank_grid | blank_coord | blank_lined
+  templateId    String?
+  template      TemplateFile? @relation(fields: [templateId], references: [id])
+  pageCount     Int      @default(1)
+  scheduledFor  DateTime?                          // когда учитель планирует провести урок
+  classId       String?                            // дефолтный класс для быстрого «▶ Начать»
+  class         Class?   @relation("LessonDefaultClass", fields: [classId], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions      Session[]
+
+  @@index([teacherId])
+  @@index([scheduledFor])
+  @@index([classId])
+}
+
+model TemplateFile {
+  id        String   @id @default(cuid())
+  teacherId String
+  teacher   Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  s3Key     String                  // путь в Yandex Object Storage
+  pageKeys  Json                    // массив ключей растеризованных страниц PNG
+  mime      String
+  size      Int                     // байт
+  createdAt DateTime @default(now())
+
+  lessons   Lesson[]
+
+  @@index([teacherId])
+}
+
+// -------------------------------------------------------------- СЕССИИ
+
+model Session {
+  id         String   @id @default(cuid())
+  lessonId   String
+  lesson     Lesson   @relation(fields: [lessonId], references: [id])
+  classId    String
+  class      Class    @relation(fields: [classId], references: [id])
+  teacherId  String
+  teacher    Teacher  @relation(fields: [teacherId], references: [id])
+
+  mode       String   @default("live")     // live | homework | review
+  joinCode   String   @unique              // 6-значный, удобный для диктовки
+  qrToken    String   @unique              // для QR-ссылки
+
+  startedAt  DateTime @default(now())
+  closedAt   DateTime?
+  dueAt      DateTime?                    // для homework
+
+  workspaces Workspace[]
+  activity   ActivityLog[]
+
+  @@index([teacherId])
+  @@index([classId])
+  @@index([joinCode])
+}
+
+// -------------------------------------------------------------- WORKSPACE = КОПИЯ ДЛЯ УЧЕНИКА
+
+model Workspace {
+  id              String   @id @default(cuid())
+  sessionId       String
+  session         Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         Student  @relation(fields: [studentId], references: [id])
+
+  status          String   @default("not_joined")  // not_joined | active | idle | submitted
+  lastActivityAt  DateTime?
+  joinedAt        DateTime?
+  submittedAt     DateTime?
+  handRaisedAt    DateTime?                       // null = рука не поднята
+
+  strokes         Stroke[]
+  previews        WorkspacePreview[]
+
+  @@unique([sessionId, studentId])
+  @@index([sessionId])
+  @@index([studentId])
+}
+
+// -------------------------------------------------------------- ШТРИХИ (APPEND-ONLY)
+
+model Stroke {
+  id           String    @id                       // UUID с клиента — идемпотентность синка
+  workspaceId  String
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  pageIndex    Int       @default(0)
+  layer        String    @default("student")       // student | teacher
+  authorRole   String    @default("student")       // student | teacher
+
+  color        String                              // #0c0d10
+  size         Float
+  simulatePressure Boolean @default(false)
+
+  points       Json                                // [[x,y,pressure], ...]
+
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime?                           // soft delete для undo на 30 сек
+
+  @@index([workspaceId, pageIndex])
+  @@index([workspaceId, deletedAt])
+}
+
+// -------------------------------------------------------------- ПРЕВЬЮ (МОЗАИКА)
+
+model WorkspacePreview {
+  id          String   @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pageIndex   Int      @default(0)
+  pngBytes    Bytes                              // ~5–20 КБ на превью
+  updatedAt   DateTime @updatedAt
+
+  @@unique([workspaceId, pageIndex])
+}
+
+// -------------------------------------------------------------- ЖУРНАЛ
+
+model ActivityLog {
+  id          String   @id @default(cuid())
+  sessionId   String
+  session     Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  workspaceId String?
+  actor       String                              // teacher | student | system
+  kind        String                              // session_started | student_joined | hand_raised | submitted | overlay_added | closed | exported
+  payload     Json?
+  at          DateTime @default(now())
+
+  @@index([sessionId, at])
+}

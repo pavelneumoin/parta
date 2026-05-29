@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body {
+  height: 100%;
+  background: theme(colors.chalk);
+  color: theme(colors.ink);
+  -webkit-tap-highlight-color: transparent;
+}
+
+* {
+  -webkit-touch-callout: none;
+}
+
+/* по умолчанию ничего не выделяется — на холсте это критично */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* кроме инпутов */
+input, textarea, [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+}

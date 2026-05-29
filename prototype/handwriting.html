@@ -1,0 +1,754 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#1a1f2b">
+<title>Парта · handwriting prototype</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --paper: #ffffff;
+    --grid: #d8dee9;
+    --grid-strong: #c0c8d4;
+    --toolbar: #1a1f2b;
+    --toolbar-hover: #2a3142;
+    --toolbar-active: #3a4360;
+    --accent: #4f7cff;
+    --text-on-dark: #e7eaf2;
+    --text-dim: #8b94a8;
+  }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+  #app {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    height: 100vh;
+    width: 100vw;
+  }
+  #toolbar {
+    background: var(--toolbar);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 0;
+    gap: 8px;
+    overflow-y: auto;
+  }
+  .tool-btn {
+    width: 44px; height: 44px;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-on-dark);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s ease;
+    font-size: 18px;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .tool-btn:hover { background: var(--toolbar-hover); }
+  .tool-btn.active { background: var(--toolbar-active); }
+  .tool-btn svg { width: 22px; height: 22px; pointer-events: none; }
+  .tool-btn .dot {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: 2px solid #ffffff20;
+  }
+  .tool-btn.active .dot { border-color: #ffffff; }
+  .group-sep {
+    width: 28px;
+    height: 1px;
+    background: #ffffff15;
+    margin: 4px 0;
+    flex-shrink: 0;
+  }
+  .size-popover {
+    position: absolute;
+    left: 56px;
+    background: var(--toolbar);
+    padding: 8px;
+    border-radius: 10px;
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 100;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  }
+  .size-popover.open { display: flex; }
+  .size-popover .size-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 44px; width: 84px;
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--text-dim);
+  }
+  .size-popover .size-row:hover { background: var(--toolbar-hover); color: var(--text-on-dark); }
+  .size-popover .size-row.active { background: var(--toolbar-active); color: var(--text-on-dark); }
+  .size-dot {
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  #stage {
+    position: relative;
+    overflow: hidden;
+    background: var(--paper);
+    touch-action: none;
+  }
+  canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+  }
+  #hud {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(26, 31, 43, 0.86);
+    color: var(--text-on-dark);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    z-index: 50;
+    pointer-events: none;
+    min-width: 200px;
+  }
+  #hud .hud-row { display: flex; justify-content: space-between; gap: 12px; }
+  #hud .hud-key { color: var(--text-dim); }
+  #hud .hud-val { color: var(--text-on-dark); }
+  #hud.dim { opacity: 0.25; }
+
+  #toast {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--toolbar);
+    color: var(--text-on-dark);
+    padding: 10px 18px;
+    border-radius: 22px;
+    font-size: 14px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+    z-index: 60;
+  }
+  #toast.show { opacity: 1; }
+
+  .toggle-mode {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    background: rgba(26, 31, 43, 0.86);
+    color: var(--text-on-dark);
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    z-index: 50;
+    cursor: pointer;
+    border: none;
+    font-family: inherit;
+  }
+  .toggle-mode.on { background: var(--accent); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="toolbar">
+    <button class="tool-btn" data-tool="pen" data-color="#0c0d10" title="Чёрный"><div class="dot" style="background:#0c0d10"></div></button>
+    <button class="tool-btn" data-tool="pen" data-color="#d11a2a" title="Красный"><div class="dot" style="background:#d11a2a"></div></button>
+    <button class="tool-btn" data-tool="pen" data-color="#1f5fc9" title="Синий"><div class="dot" style="background:#1f5fc9"></div></button>
+    <button class="tool-btn" data-tool="pen" data-color="#2e8b3d" title="Зелёный"><div class="dot" style="background:#2e8b3d"></div></button>
+    <div class="group-sep"></div>
+    <button class="tool-btn" id="btn-eraser" title="Ластик (E)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6L19 21H7"/><path d="M9 11l8-8a2 2 0 0 1 3 3l-8 8"/></svg>
+    </button>
+    <div class="group-sep"></div>
+    <button class="tool-btn" id="btn-undo" title="Отмена (Ctrl+Z / два пальца)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 5 5v0a5 5 0 0 1-5 5h-4"/></svg>
+    </button>
+    <button class="tool-btn" id="btn-redo" title="Повтор (Ctrl+Shift+Z / три пальца)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 0 0-5 5v0a5 5 0 0 0 5 5h4"/></svg>
+    </button>
+    <div class="group-sep"></div>
+    <button class="tool-btn" id="btn-bg" title="Сменить фон (B)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+    </button>
+    <button class="tool-btn" id="btn-export" title="Скачать PNG">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+    </button>
+    <button class="tool-btn" id="btn-clear" title="Очистить (Del)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+    </button>
+    <div class="group-sep"></div>
+    <button class="tool-btn" id="btn-hud" title="Диагностика (H)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg>
+    </button>
+  </div>
+
+  <div id="stage">
+    <canvas id="bg"></canvas>
+    <canvas id="main"></canvas>
+    <canvas id="live"></canvas>
+    <button class="toggle-mode" id="palm-toggle" title="Palm rejection: пишет только стилус">Только перо</button>
+    <div id="hud">
+      <div class="hud-row"><span class="hud-key">FPS</span><span class="hud-val" id="hud-fps">—</span></div>
+      <div class="hud-row"><span class="hud-key">pointer</span><span class="hud-val" id="hud-ptr">—</span></div>
+      <div class="hud-row"><span class="hud-key">pressure</span><span class="hud-val" id="hud-pressure">—</span></div>
+      <div class="hud-row"><span class="hud-key">tiltX/Y</span><span class="hud-val" id="hud-tilt">—</span></div>
+      <div class="hud-row"><span class="hud-key">strokes</span><span class="hud-val" id="hud-strokes">0</span></div>
+      <div class="hud-row"><span class="hud-key">points</span><span class="hud-val" id="hud-points">0</span></div>
+      <div class="hud-row"><span class="hud-key">lat ms</span><span class="hud-val" id="hud-lat">—</span></div>
+    </div>
+    <div id="toast"></div>
+  </div>
+</div>
+
+<script type="module">
+import { getStroke } from "https://esm.sh/perfect-freehand@1.2.0";
+
+const stage = document.getElementById("stage");
+const bgCanvas = document.getElementById("bg");
+const mainCanvas = document.getElementById("main");
+const liveCanvas = document.getElementById("live");
+const bgCtx = bgCanvas.getContext("2d");
+const mainCtx = mainCanvas.getContext("2d");
+const liveCtx = liveCanvas.getContext("2d");
+
+const hudEl = document.getElementById("hud");
+const palmToggle = document.getElementById("palm-toggle");
+const toastEl = document.getElementById("toast");
+
+const BG_KINDS = ["grid", "coord", "lined", "blank"];
+let bgIndex = 0;
+
+const SIZES = { thin: 2.5, mid: 4.5, thick: 8 };
+let currentSize = "mid";
+
+const state = {
+  tool: "pen",            // 'pen' | 'eraser'
+  color: "#0c0d10",
+  size: SIZES.mid,
+  strokes: [],            // [{id, color, size, tool, points}]
+  redoStack: [],
+  current: null,
+  palmReject: true,       // только pen/eraser/mouse, без touch
+  pointerType: "—",
+  pressure: 0,
+  tiltX: 0,
+  tiltY: 0,
+  lastFrameAt: 0,
+  fps: 0,
+  fpsSamples: [],
+  latencySamples: [],
+};
+
+// --- размеры и DPI ---------------------------------------------------
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  for (const c of [bgCanvas, mainCanvas, liveCanvas]) {
+    const w = stage.clientWidth;
+    const h = stage.clientHeight;
+    c.width = Math.floor(w * dpr);
+    c.height = Math.floor(h * dpr);
+    c.style.width = w + "px";
+    c.style.height = h + "px";
+    c.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  drawBackground();
+  redrawMain();
+}
+window.addEventListener("resize", resize);
+
+// --- фон -------------------------------------------------------------
+function drawBackground() {
+  const w = stage.clientWidth;
+  const h = stage.clientHeight;
+  bgCtx.clearRect(0, 0, w, h);
+  const kind = BG_KINDS[bgIndex];
+
+  if (kind === "blank") return;
+
+  bgCtx.save();
+  bgCtx.strokeStyle = getComputedStyle(document.documentElement)
+    .getPropertyValue("--grid").trim();
+  bgCtx.lineWidth = 1;
+
+  if (kind === "grid") {
+    const step = 24;
+    bgCtx.beginPath();
+    for (let x = 0; x <= w; x += step) {
+      bgCtx.moveTo(x + 0.5, 0); bgCtx.lineTo(x + 0.5, h);
+    }
+    for (let y = 0; y <= h; y += step) {
+      bgCtx.moveTo(0, y + 0.5); bgCtx.lineTo(w, y + 0.5);
+    }
+    bgCtx.stroke();
+  } else if (kind === "lined") {
+    const step = 32;
+    bgCtx.beginPath();
+    for (let y = step; y <= h; y += step) {
+      bgCtx.moveTo(0, y + 0.5); bgCtx.lineTo(w, y + 0.5);
+    }
+    bgCtx.stroke();
+  } else if (kind === "coord") {
+    const step = 24;
+    const major = 4;
+    const cx = Math.floor(w / 2);
+    const cy = Math.floor(h / 2);
+    bgCtx.beginPath();
+    for (let x = cx % step; x <= w; x += step) {
+      bgCtx.moveTo(x + 0.5, 0); bgCtx.lineTo(x + 0.5, h);
+    }
+    for (let y = cy % step; y <= h; y += step) {
+      bgCtx.moveTo(0, y + 0.5); bgCtx.lineTo(w, y + 0.5);
+    }
+    bgCtx.stroke();
+    // сильные линии каждые major
+    bgCtx.strokeStyle = getComputedStyle(document.documentElement)
+      .getPropertyValue("--grid-strong").trim();
+    bgCtx.beginPath();
+    for (let x = cx % (step * major); x <= w; x += step * major) {
+      bgCtx.moveTo(x + 0.5, 0); bgCtx.lineTo(x + 0.5, h);
+    }
+    for (let y = cy % (step * major); y <= h; y += step * major) {
+      bgCtx.moveTo(0, y + 0.5); bgCtx.lineTo(w, y + 0.5);
+    }
+    bgCtx.stroke();
+    // оси
+    bgCtx.strokeStyle = "#6b7280";
+    bgCtx.lineWidth = 1.5;
+    bgCtx.beginPath();
+    bgCtx.moveTo(0, cy + 0.5); bgCtx.lineTo(w, cy + 0.5);
+    bgCtx.moveTo(cx + 0.5, 0); bgCtx.lineTo(cx + 0.5, h);
+    bgCtx.stroke();
+  }
+  bgCtx.restore();
+}
+
+// --- штрихи: perfect-freehand → Path2D --------------------------------
+const STROKE_OPTIONS = {
+  thinning: 0.55,
+  smoothing: 0.55,
+  streamline: 0.5,
+  easing: (t) => t,
+  start: { taper: 0, cap: true },
+  end:   { taper: 0, cap: true },
+};
+
+function strokeToPath(stroke) {
+  const opts = {
+    ...STROKE_OPTIONS,
+    size: stroke.size,
+    simulatePressure: stroke.simulatePressure,
+  };
+  const outline = getStroke(stroke.points, opts);
+  if (outline.length < 2) return null;
+  const p = new Path2D();
+  p.moveTo(outline[0][0], outline[0][1]);
+  for (let i = 1; i < outline.length; i++) {
+    p.lineTo(outline[i][0], outline[i][1]);
+  }
+  p.closePath();
+  return p;
+}
+
+function renderStrokeTo(ctx, stroke) {
+  const path = strokeToPath(stroke);
+  if (!path) return;
+  ctx.fillStyle = stroke.color;
+  ctx.fill(path);
+}
+
+function redrawMain() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  mainCtx.clearRect(0, 0, w, h);
+  for (const s of state.strokes) renderStrokeTo(mainCtx, s);
+  updateHUD();
+}
+
+function clearLive() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  liveCtx.clearRect(0, 0, w, h);
+}
+
+// --- ввод ------------------------------------------------------------
+function shouldAcceptPointer(ev) {
+  state.pointerType = ev.pointerType || "—";
+  if (ev.pointerType === "pen" || ev.pointerType === "eraser") return true;
+  if (ev.pointerType === "mouse") return true;
+  if (ev.pointerType === "touch") return !state.palmReject;
+  return true;
+}
+
+function getLocalPoint(ev) {
+  const rect = stage.getBoundingClientRect();
+  return [
+    ev.clientX - rect.left,
+    ev.clientY - rect.top,
+    ev.pressure && ev.pressure > 0 ? ev.pressure : 0.5,
+  ];
+}
+
+let activePointerId = null;
+
+stage.addEventListener("pointerdown", (ev) => {
+  if (!shouldAcceptPointer(ev)) return;
+  if (activePointerId !== null) return;
+  activePointerId = ev.pointerId;
+  stage.setPointerCapture(ev.pointerId);
+
+  state.pressure = ev.pressure || 0;
+  state.tiltX = ev.tiltX || 0;
+  state.tiltY = ev.tiltY || 0;
+
+  const isEraser = state.tool === "eraser" || ev.pointerType === "eraser";
+  const pt = getLocalPoint(ev);
+
+  if (isEraser) {
+    eraseAt(pt[0], pt[1]);
+    state.current = { tool: "eraser", lastPoint: pt };
+  } else {
+    const noPressure = !(ev.pressure && ev.pressure > 0) && ev.pointerType !== "pen";
+    state.current = {
+      id: Date.now() + Math.random().toString(36).slice(2),
+      tool: "pen",
+      color: state.color,
+      size: state.size,
+      simulatePressure: noPressure,
+      points: [pt],
+      tStart: performance.now(),
+    };
+    state.redoStack = [];
+  }
+});
+
+stage.addEventListener("pointermove", (ev) => {
+  if (ev.pointerId !== activePointerId) return;
+  if (!state.current) return;
+
+  state.pressure = ev.pressure || 0;
+  state.tiltX = ev.tiltX || 0;
+  state.tiltY = ev.tiltY || 0;
+
+  // coalesced events (если поддерживаются) — для плавности на iOS Pencil
+  const events = ev.getCoalescedEvents ? ev.getCoalescedEvents() : [ev];
+  if (state.current.tool === "eraser") {
+    for (const e of events) {
+      const pt = getLocalPoint(e);
+      eraseAt(pt[0], pt[1]);
+      state.current.lastPoint = pt;
+    }
+  } else {
+    for (const e of events) {
+      state.current.points.push(getLocalPoint(e));
+    }
+    scheduleLiveRender();
+  }
+});
+
+function endPointer(ev) {
+  if (ev.pointerId !== activePointerId) return;
+  activePointerId = null;
+  if (!state.current) return;
+
+  if (state.current.tool === "pen") {
+    const s = state.current;
+    if (s.points.length >= 2) {
+      state.strokes.push(s);
+      renderStrokeTo(mainCtx, s);
+      // замер времени от первого pointermove до отрисовки финала
+      const lat = performance.now() - s.tStart;
+      state.latencySamples.push(lat);
+      if (state.latencySamples.length > 30) state.latencySamples.shift();
+    }
+    clearLive();
+  }
+  state.current = null;
+  updateHUD();
+}
+stage.addEventListener("pointerup", endPointer);
+stage.addEventListener("pointercancel", endPointer);
+stage.addEventListener("pointerleave", endPointer);
+
+// --- live-рендер текущего штриха через RAF ---------------------------
+let liveRenderScheduled = false;
+function scheduleLiveRender() {
+  if (liveRenderScheduled) return;
+  liveRenderScheduled = true;
+  requestAnimationFrame(() => {
+    liveRenderScheduled = false;
+    if (!state.current || state.current.tool !== "pen") return;
+    clearLive();
+    renderStrokeTo(liveCtx, state.current);
+    measureFPS();
+    updateHUD();
+  });
+}
+
+function measureFPS() {
+  const now = performance.now();
+  if (state.lastFrameAt) {
+    const dt = now - state.lastFrameAt;
+    if (dt > 0) {
+      state.fpsSamples.push(1000 / dt);
+      if (state.fpsSamples.length > 30) state.fpsSamples.shift();
+      const avg = state.fpsSamples.reduce((a, b) => a + b, 0) / state.fpsSamples.length;
+      state.fps = Math.round(avg);
+    }
+  }
+  state.lastFrameAt = now;
+}
+
+// --- стирание (геометрически — bbox пересечение) ---------------------
+function eraseAt(x, y) {
+  const radius = 14;
+  const rx0 = x - radius, ry0 = y - radius;
+  const rx1 = x + radius, ry1 = y + radius;
+  let removed = 0;
+  state.strokes = state.strokes.filter((s) => {
+    if (!s.bbox) s.bbox = computeBBox(s.points);
+    if (s.bbox.x1 < rx0 || s.bbox.x0 > rx1 || s.bbox.y1 < ry0 || s.bbox.y0 > ry1) return true;
+    // более точная проверка: есть ли точка штриха в радиусе
+    for (const p of s.points) {
+      const dx = p[0] - x, dy = p[1] - y;
+      if (dx * dx + dy * dy <= radius * radius) { removed++; return false; }
+    }
+    return true;
+  });
+  if (removed > 0) redrawMain();
+}
+function computeBBox(points) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of points) {
+    if (x < x0) x0 = x; if (y < y0) y0 = y;
+    if (x > x1) x1 = x; if (y > y1) y1 = y;
+  }
+  return { x0, y0, x1, y1 };
+}
+
+// --- undo / redo -----------------------------------------------------
+function undo() {
+  if (state.strokes.length === 0) return;
+  const s = state.strokes.pop();
+  state.redoStack.push(s);
+  redrawMain();
+}
+function redo() {
+  if (state.redoStack.length === 0) return;
+  const s = state.redoStack.pop();
+  state.strokes.push(s);
+  redrawMain();
+}
+
+// --- многопальцевые жесты (undo/redo) --------------------------------
+let activeTouches = 0;
+stage.addEventListener("touchstart", (ev) => {
+  activeTouches = ev.touches.length;
+  if (activeTouches === 2) { undo(); toast("Отмена"); }
+  if (activeTouches === 3) { redo(); toast("Повтор"); }
+}, { passive: true });
+stage.addEventListener("touchend", () => {
+  activeTouches = 0;
+}, { passive: true });
+
+// --- клавиатура -------------------------------------------------------
+window.addEventListener("keydown", (ev) => {
+  if (ev.ctrlKey || ev.metaKey) {
+    if (ev.key === "z" && !ev.shiftKey) { ev.preventDefault(); undo(); }
+    if (ev.key === "z" && ev.shiftKey)  { ev.preventDefault(); redo(); }
+    if (ev.key === "y")                  { ev.preventDefault(); redo(); }
+  }
+  if (ev.key === "e" || ev.key === "у") toggleEraser();
+  if (ev.key === "b" || ev.key === "и") cycleBackground();
+  if (ev.key === "h" || ev.key === "р") toggleHud();
+  if (ev.key === "Delete" || ev.key === "Backspace") clearAll();
+});
+
+// --- UI: кнопки тулбара ----------------------------------------------
+function setActiveTool(btn) {
+  document.querySelectorAll(".tool-btn").forEach((b) => b.classList.remove("active"));
+  if (btn) btn.classList.add("active");
+}
+
+const colorButtons = [...document.querySelectorAll('.tool-btn[data-tool="pen"]')];
+colorButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    state.tool = "pen";
+    state.color = btn.dataset.color;
+    setActiveTool(btn);
+    closeSizePopover();
+  });
+  // долгое нажатие на цвет — открыть размер
+  let longPressTimer = null;
+  btn.addEventListener("pointerdown", (ev) => {
+    if (ev.pointerType === "touch" || ev.pointerType === "mouse" || ev.pointerType === "pen") {
+      longPressTimer = setTimeout(() => openSizePopover(btn), 380);
+    }
+  });
+  btn.addEventListener("pointerup", () => { if (longPressTimer) clearTimeout(longPressTimer); });
+  btn.addEventListener("pointercancel", () => { if (longPressTimer) clearTimeout(longPressTimer); });
+});
+// дефолтный активный
+setActiveTool(colorButtons[0]);
+
+const btnEraser = document.getElementById("btn-eraser");
+btnEraser.addEventListener("click", () => toggleEraser());
+function toggleEraser() {
+  if (state.tool === "eraser") {
+    state.tool = "pen";
+    setActiveTool(colorButtons.find((b) => b.dataset.color === state.color) || colorButtons[0]);
+  } else {
+    state.tool = "eraser";
+    setActiveTool(btnEraser);
+  }
+}
+
+document.getElementById("btn-undo").addEventListener("click", undo);
+document.getElementById("btn-redo").addEventListener("click", redo);
+document.getElementById("btn-bg").addEventListener("click", cycleBackground);
+document.getElementById("btn-clear").addEventListener("click", clearAll);
+document.getElementById("btn-export").addEventListener("click", exportPng);
+document.getElementById("btn-hud").addEventListener("click", toggleHud);
+
+function cycleBackground() {
+  bgIndex = (bgIndex + 1) % BG_KINDS.length;
+  drawBackground();
+  toast("Фон: " + bgLabel(BG_KINDS[bgIndex]));
+}
+function bgLabel(k) {
+  return { grid: "клетка", coord: "координаты", lined: "линии", blank: "чистый" }[k];
+}
+
+function clearAll() {
+  if (state.strokes.length === 0) return;
+  state.redoStack = state.strokes.slice();
+  state.strokes = [];
+  redrawMain();
+  toast("Очищено");
+}
+
+function exportPng() {
+  // склеиваем bg + main
+  const w = stage.clientWidth, h = stage.clientHeight;
+  const out = document.createElement("canvas");
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  out.width = w * dpr; out.height = h * dpr;
+  const ctx = out.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(bgCanvas, 0, 0, w, h);
+  ctx.drawImage(mainCanvas, 0, 0, w, h);
+  out.toBlob((blob) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "parta-" + new Date().toISOString().replace(/[:.]/g, "-") + ".png";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, "image/png");
+  toast("PNG скачан");
+}
+
+function toggleHud() { hudEl.classList.toggle("dim"); }
+
+palmToggle.addEventListener("click", () => {
+  state.palmReject = !state.palmReject;
+  palmToggle.classList.toggle("on", state.palmReject);
+  palmToggle.textContent = state.palmReject ? "Только перо" : "Перо + палец";
+  toast(state.palmReject ? "Palm rejection включён" : "Пишем и пальцем");
+});
+palmToggle.classList.add("on");
+
+// --- popover толщины -------------------------------------------------
+let sizePopover = null;
+function openSizePopover(anchor) {
+  closeSizePopover();
+  const el = document.createElement("div");
+  el.className = "size-popover open";
+  const rect = anchor.getBoundingClientRect();
+  el.style.top = rect.top + "px";
+  for (const [key, val] of Object.entries(SIZES)) {
+    const row = document.createElement("div");
+    row.className = "size-row" + (key === currentSize ? " active" : "");
+    const d = document.createElement("div");
+    d.className = "size-dot";
+    d.style.width = (val * 2) + "px";
+    d.style.height = (val * 2) + "px";
+    row.appendChild(d);
+    row.addEventListener("click", () => {
+      currentSize = key;
+      state.size = val;
+      closeSizePopover();
+      toast("Толщина: " + key);
+    });
+    el.appendChild(row);
+  }
+  document.body.appendChild(el);
+  sizePopover = el;
+  setTimeout(() => {
+    document.addEventListener("pointerdown", outsideCloser, { once: true });
+  }, 10);
+}
+function closeSizePopover() { if (sizePopover) { sizePopover.remove(); sizePopover = null; } }
+function outsideCloser(ev) {
+  if (sizePopover && !sizePopover.contains(ev.target)) closeSizePopover();
+}
+
+// --- HUD --------------------------------------------------------------
+function updateHUD() {
+  document.getElementById("hud-fps").textContent = state.fps || "—";
+  document.getElementById("hud-ptr").textContent = state.pointerType;
+  document.getElementById("hud-pressure").textContent = state.pressure ? state.pressure.toFixed(2) : "0";
+  document.getElementById("hud-tilt").textContent = `${state.tiltX}° / ${state.tiltY}°`;
+  document.getElementById("hud-strokes").textContent = state.strokes.length;
+  let pts = 0;
+  for (const s of state.strokes) pts += s.points.length;
+  if (state.current && state.current.points) pts += state.current.points.length;
+  document.getElementById("hud-points").textContent = pts;
+  if (state.latencySamples.length > 0) {
+    const avg = state.latencySamples.reduce((a, b) => a + b, 0) / state.latencySamples.length;
+    document.getElementById("hud-lat").textContent = Math.round(avg);
+  }
+}
+
+// --- toast ------------------------------------------------------------
+let toastTimer = null;
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add("show");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove("show"), 1400);
+}
+
+// --- init -------------------------------------------------------------
+resize();
+// чтобы Safari не делал свайп-навигацию
+document.addEventListener("gesturestart", (e) => e.preventDefault());
+document.addEventListener("gesturechange", (e) => e.preventDefault());
+document.addEventListener("gestureend", (e) => e.preventDefault());
+
+console.log("Парта · handwriting prototype готов. Открой DevTools → Toggle Device Toolbar и попробуй разные устройства.");
+</script>
+</body>
+</html>
