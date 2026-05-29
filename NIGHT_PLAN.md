@@ -16,7 +16,7 @@
 - [ ] **It-3. Accessibility-аудит** через `design:accessibility-review` — контраст палитры (WebAIM), touch targets ≥ 44×44, фокус-кольца, screen reader labels на иконках.
 - [ ] **It-4. Тесты для штампов** — unit-тест placeStamp, integration-тест API (учитель ставит штамп, layer=teacher).
 - [ ] **It-5. Учительские текст-комментарии** — `Comment` модель, прикреплённая к workspace, показывается ученику над листом. Без редактирования (immutable, audit).
-- [ ] **It-6. Просмотр submitted-работ отдельно** — `/app/session/[id]/submitted` со списком сданных + быстрый просмотр PNG превью.
+- [x] **It-6. Просмотр submitted-работ отдельно** — `/app/session/[id]/submitted`: grid 5×N с PNG-превью, имя+время+число штрихов, ссылка на полный холст; кнопка «Сданные работы (N)» в хедере session-страницы.
 - [x] **It-7. Healthcheck + рейт-лимит** — `/api/health` (DB ping + uptime + ts), `lib/rateLimit.ts` sliding-window (GC 10 мин), 120/мин на `/api/strokes`, 60/мин на `/api/sessions/.../broadcast`. +8 unit-тестов (22 всего).
 - [x] **It-8. PWA манифест + meta-теги** — `app/manifest.ts` (Next.js auto-serve), `app/apple-icon.tsx` (180×180 ImageResponse), `layout.tsx` полный Metadata с openGraph/twitter/appleWebApp/manifest/robots.
 
@@ -77,5 +77,6 @@
 | 7 | 08:00 | 08:10 | /api/health, rateLimit.ts (sliding-window + GC), rate-limit на strokes/broadcast, +8 тестов |
 | 8 | 08:10 | 08:18 | manifest.ts, apple-icon.tsx (ImageResponse), layout.tsx: og/twitter/appleWebApp/robots meta |
 | 9 | 08:18 | 08:25 | docker-compose.yml (postgres:16), .env.example расширен, package.json: db:migrate-prod/reset/generate |
+| 6 | 08:25 | 08:35 | /session/[id]/submitted: grid превью сданных работ, PNG lazy-load, кнопка в хедере session-страницы |
 
 (заполняется после каждой итерации)

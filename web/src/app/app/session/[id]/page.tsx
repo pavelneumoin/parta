@@ -58,6 +58,14 @@ export default async function SessionPage({
               {session.joinCode}
             </div>
           )}
+          {session.workspaces.filter((w) => w.status === "submitted").length > 0 && (
+            <Link
+              href={`/app/session/${session.id}/submitted`}
+              className="px-4 py-2.5 rounded-xl border border-rule hover:bg-chalk transition text-sm font-medium"
+            >
+              Сданные работы ({session.workspaces.filter((w) => w.status === "submitted").length})
+            </Link>
+          )}
           <ExportClassButton
             sessionId={session.id}
             className={session.class.name}
