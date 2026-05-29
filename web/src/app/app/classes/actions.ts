@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireTeacher } from "@/lib/session";
 import { generateAnonToken } from "@/lib/codes";
+import { parseStudentNames } from "@/lib/parseStudents";
 
 const createSchema = z.object({
   name: z.string().min(1, "Введите название класса").max(40),
@@ -41,10 +42,7 @@ export async function createClassAction(
     return { ok: false, fieldErrors };
   }
 
-  const studentNames = parsed.data.studentsRaw
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+  const studentNames = parseStudentNames(parsed.data.studentsRaw);
 
   if (studentNames.length === 0) {
     return {
@@ -85,16 +83,17 @@ export async function addStudentsAction(formData: FormData) {
     studentsRaw: formData.get("students"),
   });
 
-  // проверка владения классом
+  // проверка владения классом + текущий список (для дедупликации)
   const klass = await db.class.findFirst({
     where: { id: parsed.classId, teacherId: teacher.id },
+    include: { students: { select: { fullName: true } } },
   });
   if (!klass) throw new Error("Класс не найден");
 
-  const names = parsed.studentsRaw
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+  const existing = new Set(klass.students.map((s) => s.fullName.toLowerCase()));
+  const names = parseStudentNames(parsed.studentsRaw).filter(
+    (n) => !existing.has(n.toLowerCase()),
+  );
 
   if (names.length === 0) return;
 

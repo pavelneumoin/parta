@@ -161,9 +161,13 @@ export default async function ClassDetailPage({
           <textarea
             name="students"
             rows={4}
-            placeholder="Добавить учеников (каждое имя — с новой строки)"
+            placeholder={"Вставьте список — по одному с новой строки.\nМожно прямо из журнала или Excel:\n1. Иванова Анна\n2. Петров Борис"}
             className="px-3 py-2.5 rounded-lg border border-rule bg-paper outline-none focus:border-accent transition font-mono text-sm"
           />
+          <p className="text-xs text-dim">
+            Поймём нумерацию, столбцы из Excel и запятые. Повторы и уже
+            добавленных пропустим.
+          </p>
           <button
             type="submit"
             className="self-end px-4 py-2 rounded-lg border border-rule hover:bg-rule/40 transition text-sm"

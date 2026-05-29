@@ -49,13 +49,17 @@ export default function NewClassPage() {
             name="students"
             rows={14}
             required
-            placeholder={`Иванов Иван\nПетрова Анна\nСидоров Сергей`}
+            placeholder={`Иванов Иван\nПетрова Анна\nСидоров Сергей\n\nМожно вставить прямо из журнала или Excel:\n1.\tАбрамова Анна\n2.\tБорисов Борис`}
             className={`px-3 py-2.5 rounded-lg border bg-paper outline-none focus:border-accent transition font-mono text-sm leading-relaxed ${
               state.fieldErrors?.studentsRaw ? "border-red" : "border-rule"
             }`}
           />
-          {state.fieldErrors?.studentsRaw && (
+          {state.fieldErrors?.studentsRaw ? (
             <span className="text-red text-xs">{state.fieldErrors.studentsRaw}</span>
+          ) : (
+            <span className="text-xs text-dim">
+              Поймём нумерацию, столбцы из Excel и запятые. Повторы пропустим.
+            </span>
           )}
         </label>
 
