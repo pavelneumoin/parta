@@ -32,6 +32,7 @@ export default async function AppLayout({
             <AppNavLink href="/app" exact>Сегодня</AppNavLink>
             <AppNavLink href="/app/lessons">Уроки</AppNavLink>
             <AppNavLink href="/app/classes">Классы</AppNavLink>
+            <AppNavLink href="/app/stats">Сводка</AppNavLink>
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <span
