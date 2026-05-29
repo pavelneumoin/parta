@@ -73,6 +73,21 @@ export default async function DashboardPage() {
         </div>
       </div>
 
+      {classes.length === 0 && (
+        <Link
+          href="/app/welcome"
+          className="flex items-center justify-between gap-4 mb-8 p-5 rounded-2xl border border-accent bg-accent/5 hover:bg-accent/10 transition"
+        >
+          <div>
+            <div className="font-semibold text-ink">Первый раз в Парте?</div>
+            <div className="text-sm text-dim mt-0.5">
+              Пошаговый старт за 3 шага — от класса до живого урока.
+            </div>
+          </div>
+          <span className="text-accent font-medium whitespace-nowrap">Начать →</span>
+        </Link>
+      )}
+
       {recentSessions.length > 0 && (
         <Section title="Идут сейчас">
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
