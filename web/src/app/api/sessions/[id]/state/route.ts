@@ -48,6 +48,7 @@ export async function GET(
   return NextResponse.json({
     sessionId: session.id,
     closedAt: session.closedAt,
+    freezeUntil: session.freezeUntil ? session.freezeUntil.toISOString() : null,
     templateKind: session.lesson.templateKind,
     pageCount: session.lesson.pageCount,
     workspaces: session.workspaces.map((w) => {

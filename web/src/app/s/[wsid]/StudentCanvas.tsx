@@ -60,11 +60,13 @@ export function StudentCanvas(props: Props) {
   const liveRef = useRef<HTMLCanvasElement>(null);
 
   // мутабельное состояние через refs — не триггерит re-render
-  const toolRef = useRef<"pen" | "eraser" | "marker" | "stamp">("pen");
+  const toolRef = useRef<"pen" | "eraser" | "marker" | "stamp" | "lasso" | "line">("pen");
   const stampKindRef = useRef<StampKind>("plus");
   const markerColorRef = useRef<string>(MARKER_COLORS[0]!.hex);
   const colorRef = useRef<string>(COLORS[0]!.hex);
   const sizeRef = useRef<number>(SIZES[1]!.value);
+  const lassoPathRef = useRef<[number, number][] | null>(null);
+  const lineStartRef = useRef<[number, number, number] | null>(null);
   const palmRejectRef = useRef<boolean>(true);
   const strokesRef = useRef<StrokeRecord[]>([]);
   const pendingFlushRef = useRef<StrokeRecord[]>([]);
@@ -84,17 +86,21 @@ export function StudentCanvas(props: Props) {
   const pendingDeleteRef = useRef<string[]>([]);
   // зеркало closed в ref — pointer handlers внутри стабильного useEffect читают актуальное значение
   const closedRef = useRef<boolean>(props.sessionClosed);
+  const frozenRef = useRef<boolean>(false);
+  const [frozenUntil, setFrozenUntil] = useState<number | null>(null);
   // зеркало токена — pointer handlers различают студента (есть токен) и учителя (нет)
   const tokenRef = useRef<string | null>(null);
   // текущая страница (0-based) — отражена в state ниже; ref для pointer handlers
   const pageRef = useRef<number>(0);
 
   // отображаемое в UI
-  const [tool, setTool] = useState<"pen" | "eraser" | "marker" | "stamp">("pen");
+  const [tool, setTool] = useState<"pen" | "eraser" | "marker" | "stamp" | "lasso" | "line">("pen");
   const [stampKind, setStampKind] = useState<StampKind>("plus");
   const [markerColorIdx, setMarkerColorIdx] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // лассо-выделение
+  const [lassoSelectedIds, setLassoSelectedIds] = useState<string[]>([]);
   const [colorIdx, setColorIdx] = useState(0);
   const [sizeIdx, setSizeIdx] = useState(1);
   const [palmReject, setPalmReject] = useState(true);
@@ -343,15 +349,19 @@ export function StudentCanvas(props: Props) {
       if (closedRef.current) return;
       // ученик после submit больше не пишет; учитель — пишет всегда
       if (submittedRef.current && tokenRef.current) return;
+      // заморозка — ученики read-only; учитель пишет всегда
+      if (frozenRef.current && tokenRef.current) return;
       if (!acceptPointer(ev)) return;
       if (activePointerRef.current !== null) return;
       activePointerRef.current = ev.pointerId;
       stage.setPointerCapture(ev.pointerId);
 
-      const isEraser =
-        toolRef.current === "eraser" || ev.pointerType === "eraser";
-      const isMarker = toolRef.current === "marker";
-      const isStamp = toolRef.current === "stamp";
+      const t = toolRef.current;
+      const isEraser = t === "eraser" || ev.pointerType === "eraser";
+      const isMarker = t === "marker";
+      const isStamp = t === "stamp";
+      const isLasso = t === "lasso";
+      const isLine = t === "line";
       const pt = localPoint(ev);
       if (isEraser) {
         eraseAt(pt[0], pt[1]);
@@ -361,6 +371,22 @@ export function StudentCanvas(props: Props) {
       if (isStamp) {
         placeStamp(pt[0], pt[1]);
         currentRef.current = null;
+        return;
+      }
+      if (isLasso) {
+        lassoPathRef.current = [[pt[0], pt[1]]];
+        setLassoSelectedIds([]);
+        return;
+      }
+      if (isLine) {
+        lineStartRef.current = pt;
+        currentRef.current = {
+          id: uuid(),
+          points: [pt, pt],
+          color: colorRef.current,
+          size: sizeRef.current,
+          simulatePressure: false,
+        };
         return;
       }
       currentRef.current = {
@@ -385,32 +411,134 @@ export function StudentCanvas(props: Props) {
       });
     };
 
+    const drawLassoLive = () => {
+      const path = lassoPathRef.current;
+      if (!path || path.length < 2) return;
+      const w = stage.clientWidth, h = stage.clientHeight;
+      liveCtx.clearRect(0, 0, w, h);
+      liveCtx.save();
+      liveCtx.strokeStyle = "rgba(31, 95, 201, 0.9)";
+      liveCtx.lineWidth = 1.5;
+      liveCtx.setLineDash([6, 4]);
+      liveCtx.beginPath();
+      liveCtx.moveTo(path[0]![0], path[0]![1]);
+      for (let i = 1; i < path.length; i++) {
+        liveCtx.lineTo(path[i]![0], path[i]![1]);
+      }
+      liveCtx.stroke();
+      liveCtx.restore();
+    };
+
     const onMove = (ev: PointerEvent) => {
       if (ev.pointerId !== activePointerRef.current) return;
-      const isEraser =
-        toolRef.current === "eraser" || ev.pointerType === "eraser";
+      const t = toolRef.current;
+      const isEraser = t === "eraser" || ev.pointerType === "eraser";
+      const isLasso = t === "lasso";
+      const isLine = t === "line";
       const events = ev.getCoalescedEvents ? ev.getCoalescedEvents() : [ev];
+
       if (isEraser) {
         for (const e of events) {
           const pt = localPoint(e);
           eraseAt(pt[0], pt[1]);
         }
-      } else {
-        if (!currentRef.current) return;
+        return;
+      }
+      if (isLasso) {
+        const path = lassoPathRef.current;
+        if (!path) return;
         for (const e of events) {
-          currentRef.current.points.push(localPoint(e));
+          const pt = localPoint(e);
+          path.push([pt[0], pt[1]]);
         }
+        requestAnimationFrame(drawLassoLive);
+        return;
+      }
+      if (isLine) {
+        if (!currentRef.current || !lineStartRef.current) return;
+        const pt = localPoint(ev);
+        currentRef.current.points = [lineStartRef.current, pt];
         scheduleLive();
+        return;
+      }
+      if (!currentRef.current) return;
+      for (const e of events) {
+        currentRef.current.points.push(localPoint(e));
+      }
+      scheduleLive();
+    };
+
+    // Проверка: точка внутри полигона (ray casting)
+    const pointInPoly = (px: number, py: number, poly: [number, number][]) => {
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const xi = poly[i]![0], yi = poly[i]![1];
+        const xj = poly[j]![0], yj = poly[j]![1];
+        const intersect =
+          yi > py !== yj > py &&
+          px < ((xj - xi) * (py - yi)) / (yj - yi + 1e-9) + xi;
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    };
+
+    const finalizeLasso = () => {
+      const path = lassoPathRef.current;
+      lassoPathRef.current = null;
+      const w = stage.clientWidth, h = stage.clientHeight;
+      liveCtx.clearRect(0, 0, w, h);
+      if (!path || path.length < 3) {
+        setLassoSelectedIds([]);
+        return;
+      }
+      const page = pageRef.current;
+      const selected: string[] = [];
+      const layer: "student" | "teacher" = tokenRef.current ? "student" : "teacher";
+      for (const s of strokesRef.current) {
+        if ((s.pageIndex ?? 0) !== page) continue;
+        // ученик может удалить только свои штрихи; учитель — все
+        if (layer === "student" && s.layer === "teacher") continue;
+        const inside = s.points.some((p) => pointInPoly(p[0], p[1], path));
+        if (inside) selected.push(s.id);
+      }
+      setLassoSelectedIds(selected);
+      // подсветим выбранные пунктиром
+      if (selected.length > 0) {
+        liveCtx.save();
+        liveCtx.strokeStyle = "rgba(31, 95, 201, 0.75)";
+        liveCtx.lineWidth = 2;
+        liveCtx.setLineDash([4, 3]);
+        const setSel = new Set(selected);
+        for (const s of strokesRef.current) {
+          if (!setSel.has(s.id)) continue;
+          if (s.points.length < 2) continue;
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          for (const p of s.points) {
+            if (p[0] < minX) minX = p[0];
+            if (p[0] > maxX) maxX = p[0];
+            if (p[1] < minY) minY = p[1];
+            if (p[1] > maxY) maxY = p[1];
+          }
+          liveCtx.strokeRect(minX - 4, minY - 4, maxX - minX + 8, maxY - minY + 8);
+        }
+        liveCtx.restore();
       }
     };
 
     const finalizeStroke = () => {
+      if (toolRef.current === "lasso") {
+        finalizeLasso();
+        return;
+      }
+      if (toolRef.current === "line") {
+        lineStartRef.current = null;
+      }
       if (!currentRef.current) return;
       const cur = currentRef.current;
       if (cur.points.length >= 2) {
         const rec: StrokeRecord = {
           ...cur,
-          layer: "student",
+          layer: tokenRef.current ? "student" : "teacher",
           pageIndex: pageRef.current,
         };
         strokesRef.current.push(rec);
@@ -601,6 +729,20 @@ export function StudentCanvas(props: Props) {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const data = await r.json();
         lastSyncedAt = data.now ?? lastSyncedAt;
+        // freeze sync
+        if (data.freezeUntil) {
+          const until = new Date(data.freezeUntil).getTime();
+          if (until > Date.now()) {
+            setFrozenUntil(until);
+            frozenRef.current = true;
+          } else {
+            setFrozenUntil(null);
+            frozenRef.current = false;
+          }
+        } else {
+          setFrozenUntil(null);
+          frozenRef.current = false;
+        }
         const main = mainRef.current?.getContext("2d");
         if (!main) return;
         // фильтруем: только учительские штрихи, которых ещё нет у нас
@@ -1030,6 +1172,51 @@ export function StudentCanvas(props: Props) {
             className="absolute inset-0 pointer-events-none"
           />
 
+          {lassoSelectedIds.length > 0 && (
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-2 rounded-full bg-accent text-paper text-sm shadow-lg z-20">
+              <span className="font-medium">{lassoSelectedIds.length} штрихов выбрано</span>
+              <button
+                onClick={() => {
+                  const selSet = new Set(lassoSelectedIds);
+                  strokesRef.current = strokesRef.current.filter((s) => !selSet.has(s.id));
+                  pendingDeleteRef.current.push(...lassoSelectedIds);
+                  setLassoSelectedIds([]);
+                  const stage = stageRef.current;
+                  if (!stage) return;
+                  const w = stage.clientWidth, h = stage.clientHeight;
+                  const main = mainRef.current?.getContext("2d");
+                  const live = liveRef.current?.getContext("2d");
+                  if (main) {
+                    main.clearRect(0, 0, w, h);
+                    const page = pageRef.current;
+                    for (const s of strokesRef.current) {
+                      if ((s.pageIndex ?? 0) === page) drawStroke(main, s);
+                    }
+                  }
+                  if (live) live.clearRect(0, 0, w, h);
+                  setCount(strokesRef.current.length);
+                  dirtyForPreviewRef.current = true;
+                }}
+                className="px-2 py-1 rounded bg-paper/20 hover:bg-paper/30 transition text-xs font-medium"
+                title="Удалить выделенные штрихи"
+              >
+                🗑 Удалить
+              </button>
+              <button
+                onClick={() => {
+                  setLassoSelectedIds([]);
+                  const stage = stageRef.current;
+                  const live = liveRef.current?.getContext("2d");
+                  if (stage && live) live.clearRect(0, 0, stage.clientWidth, stage.clientHeight);
+                }}
+                className="px-2 py-1 rounded hover:bg-paper/20 transition text-xs"
+                title="Снять выделение"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {props.pageCount > 1 && (
             <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-1 rounded-full bg-toolbar text-paper text-sm shadow-lg">
               <button
@@ -1148,6 +1335,9 @@ export function StudentCanvas(props: Props) {
           )}
 
           {/* Финал-экран: только для ученика, после закрытия урока */}
+          {frozenUntil != null && !isTeacher && !closed && (
+            <FrozenOverlay until={frozenUntil} />
+          )}
           {closed && !isTeacher && (
             <div className="absolute inset-0 z-30 bg-chalk/85 backdrop-blur-sm flex items-center justify-center pointer-events-none">
               <div className="pointer-events-auto max-w-md w-full mx-4 rounded-2xl bg-paper border border-rule shadow-xl p-8 text-center">
@@ -1201,8 +1391,8 @@ function Toolbar({
   setPalmReject,
   disabled,
 }: {
-  tool: "pen" | "eraser" | "marker" | "stamp";
-  setTool: (t: "pen" | "eraser" | "marker" | "stamp") => void;
+  tool: "pen" | "eraser" | "marker" | "stamp" | "lasso" | "line";
+  setTool: (t: "pen" | "eraser" | "marker" | "stamp" | "lasso" | "line") => void;
   colorIdx: number;
   setColorIdx: (i: number) => void;
   sizeIdx: number;
@@ -1305,6 +1495,32 @@ function Toolbar({
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 17l6-6L19 21H7" />
           <path d="M9 11l8-8a2 2 0 0 1 3 3l-8 8" />
+        </svg>
+      </button>
+      <button
+        disabled={disabled}
+        onClick={() => setTool(tool === "line" ? "pen" : "line")}
+        className={`w-11 h-11 rounded-lg flex items-center justify-center text-paper disabled:opacity-50 flex-shrink-0 ${
+          tool === "line" ? "bg-toolbarActive" : "hover:bg-toolbarHover"
+        }`}
+        title="Прямая (линейка)"
+      >
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <line x1="4" y1="20" x2="20" y2="4" />
+          <circle cx="4" cy="20" r="1.5" fill="currentColor" />
+          <circle cx="20" cy="4" r="1.5" fill="currentColor" />
+        </svg>
+      </button>
+      <button
+        disabled={disabled}
+        onClick={() => setTool(tool === "lasso" ? "pen" : "lasso")}
+        className={`w-11 h-11 rounded-lg flex items-center justify-center text-paper disabled:opacity-50 flex-shrink-0 ${
+          tool === "lasso" ? "bg-toolbarActive" : "hover:bg-toolbarHover"
+        }`}
+        title="Лассо — обведи штрихи, чтобы удалить"
+      >
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="3 2">
+          <path d="M12 4c5 0 9 3 9 7 0 3-3 5-7 5h-3c-2 0-3 1-3 3l1 2" />
         </svg>
       </button>
 
@@ -1458,5 +1674,28 @@ function FullscreenButton({
     >
       {isFullscreen ? "⛶" : "⛶"}
     </button>
+  );
+}
+
+function FrozenOverlay({ until }: { until: number }) {
+  const [left, setLeft] = useState(() => Math.max(0, Math.round((until - Date.now()) / 1000)));
+  useEffect(() => {
+    const id = setInterval(() => {
+      setLeft(Math.max(0, Math.round((until - Date.now()) / 1000)));
+    }, 250);
+    return () => clearInterval(id);
+  }, [until]);
+  return (
+    <div className="absolute inset-0 z-30 bg-blue/15 backdrop-blur-[1px] flex items-start justify-center pointer-events-none">
+      <div className="mt-6 px-5 py-3 rounded-2xl bg-blue text-paper shadow-xl flex items-center gap-3">
+        <span className="text-2xl">❄️</span>
+        <div>
+          <div className="font-semibold">Класс заморожен</div>
+          <div className="text-sm text-paper/80">
+            Подожди {left} сек — учитель что-то покажет
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

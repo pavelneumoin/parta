@@ -7,6 +7,7 @@ import { baseUrl } from "@/lib/baseUrl";
 import { SessionMosaic } from "./SessionMosaic";
 import { CloseSessionButton } from "./CloseSessionButton";
 import { ExportClassButton } from "./ExportClassButton";
+import { FreezeButton } from "./FreezeButton";
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +72,7 @@ export default async function SessionPage({
             className={session.class.name}
             lessonTitle={session.lesson.title}
           />
+          {!session.closedAt && <FreezeButton sessionId={session.id} />}
           {!session.closedAt && <CloseSessionButton sessionId={session.id} />}
         </div>
       </header>

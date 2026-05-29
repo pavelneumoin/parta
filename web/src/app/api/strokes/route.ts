@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
     where: { id: workspaceId },
     include: {
       student: true,
-      session: { select: { closedAt: true, teacherId: true } },
+      session: { select: { closedAt: true, teacherId: true, freezeUntil: true } },
     },
   });
   if (!ws) return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -76,6 +76,18 @@ export async function POST(req: NextRequest) {
   }
   if (!isStudent && !isTeacher) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  // заморозка класса — ученики read-only до freezeUntil; учитель пишет всегда
+  if (
+    isStudent &&
+    ws.session.freezeUntil &&
+    ws.session.freezeUntil.getTime() > Date.now()
+  ) {
+    return NextResponse.json(
+      { error: "frozen", until: ws.session.freezeUntil.toISOString() },
+      { status: 423 },
+    );
   }
 
   const authorRole = isTeacher ? "teacher" : "student";

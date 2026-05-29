@@ -147,6 +147,7 @@ model Session {
   startedAt  DateTime @default(now())
   closedAt   DateTime?
   dueAt      DateTime?                    // для homework
+  freezeUntil DateTime?                   // «заморозка класса»: до этого момента ученики read-only
 
   workspaces Workspace[]
   activity   ActivityLog[]

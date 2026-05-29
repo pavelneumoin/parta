@@ -22,7 +22,7 @@ export async function GET(
     where: { id },
     include: {
       student: true,
-      session: { select: { teacherId: true, closedAt: true } },
+      session: { select: { teacherId: true, closedAt: true, freezeUntil: true } },
     },
   });
   if (!ws) return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -61,6 +61,7 @@ export async function GET(
   return NextResponse.json({
     workspaceId: ws.id,
     closedAt: ws.session.closedAt,
+    freezeUntil: ws.session.freezeUntil ? ws.session.freezeUntil.toISOString() : null,
     strokes,
     now: new Date().toISOString(),
   });
