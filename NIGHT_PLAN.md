@@ -22,7 +22,7 @@
 
 ### Ночь 2 (4 итерации; фичи + тесты)
 
-- [ ] **It-9. Postgres-готовность** — schema без изменений, но `.env.example` + `db:migrate-prod` script + docker-compose.yml для локальной Postgres.
+- [x] **It-9. Postgres-готовность** — `docker-compose.yml` (postgres:16-alpine + healthcheck), `.env.example` расширен с комментариями SQLite/Postgres/prod, `db:migrate-prod` + `db:reset` + `db:generate` в package.json.
 - [ ] **It-10. Замечания учителя — UI** — компонент `TeacherComments` в холсте ученика, ученик видит read-only.
 - [ ] **It-11. E2E-тест критического потока** — Playwright/Vitest browser: signin → создание класса → урок → сессия → join ученика → штрих → submit. Один длинный happy-path тест.
 - [ ] **It-12. Visual regression snapshots** — Vitest browser screenshots для лендинга, дашборда, мозаики.
@@ -76,5 +76,6 @@
 | 2 | 07:50 | 08:00 | UX-copy: Empty-состояния с иконками/CTA, инлайн-confirm вместо alert(), SVG вместо ✋ |
 | 7 | 08:00 | 08:10 | /api/health, rateLimit.ts (sliding-window + GC), rate-limit на strokes/broadcast, +8 тестов |
 | 8 | 08:10 | 08:18 | manifest.ts, apple-icon.tsx (ImageResponse), layout.tsx: og/twitter/appleWebApp/robots meta |
+| 9 | 08:18 | 08:25 | docker-compose.yml (postgres:16), .env.example расширен, package.json: db:migrate-prod/reset/generate |
 
 (заполняется после каждой итерации)
