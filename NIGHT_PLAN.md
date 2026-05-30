@@ -13,7 +13,7 @@
 
 - [x] **It-1. Общий AppHeader для /app/\*** — обновлены цвета SVG-логотипа (#1e6f5c вместо #4f7cff), активная навигация через `AppNavLink` client component с usePathname, aria-current, email справа с truncate. Бонус: вынес `STAMPS` в `@/lib/stamps`, написал 14 unit-тестов для штампов (все зелёные).
 - [x] **It-2. UX-copy для пустых состояний** — Empty компоненты (lessons/classes/dashboard/lesson-detail) с иконкой+текстом+CTA; нативный `confirm()` заменён инлайн-подтверждением в StudentCanvas; `✋` заменён на SVG; логотип в StudentCanvas исправлен (#4f7cff→#1e6f5c); копи CloseSessionButton улучшена.
-- [ ] **It-3. Accessibility-аудит** через `design:accessibility-review` — контраст палитры (WebAIM), touch targets ≥ 44×44, фокус-кольца, screen reader labels на иконках.
+- [x] **It-3. Accessibility-аудит** — измерил контраст в браузере: `dim` #7a7468 давал 4.44:1 на paper (FAIL WCAG AA), заменён на #6f695d (5.22:1 paper / 4.82:1 chalk — PASS на обоих фонах). Добавил глобальное `:focus-visible` кольцо (accent) для клавиатуры в globals.css. `<html lang="ru">` уже был. Проверено: computed `.text-dim` = rgb(111,105,93), CSS пересобран. *(maximumScale=1/userScalable=false на canvas — осознанное решение, не трогаю; иконки уже с aria-label из It-2.)*
 - [ ] **It-4. Тесты для штампов** — unit-тест placeStamp, integration-тест API (учитель ставит штамп, layer=teacher).
 - [x] **It-5. Учительские текст-комментарии** — `Comment` модель (migration `20260529_teacher_comments`), API POST+GET `/api/workspaces/[id]/comments`, UI: учитель → кнопка 💬 Заметка + floating панель ввода, ученик → read-only карточки над листом (poll 10s).
 - [x] **It-6. Просмотр submitted-работ отдельно** — `/app/session/[id]/submitted`: grid 5×N с PNG-превью, имя+время+число штрихов, ссылка на полный холст; кнопка «Сданные работы (N)» в хедере session-страницы.
@@ -87,5 +87,6 @@
 | 23 | 14:45 | 15:10 | Горячие клавиши мозаики (e.code, любая раскладка) + справка-оверлей «?» |
 | verify | 15:10 | 15:30 | Браузерная проверка It-21/22/23 на demo: парсер, обе ветки stats, шорткаты ?/Esc/R. Почищен .next (corruption на YandexDisk), демо-данные восстановлены |
 | 20 | 15:30 | 15:50 | /app/welcome (3-шаговый онбординг по реальным данным) + баннер новичка; проверено в браузере |
+| 3 | 15:50 | 16:15 | a11y: dim до WCAG AA (#6f695d), :focus-visible кольцо; контраст измерен и проверен в браузере |
 
 (заполняется после каждой итерации)
