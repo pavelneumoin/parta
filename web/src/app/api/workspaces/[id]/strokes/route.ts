@@ -38,10 +38,14 @@ export async function GET(
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
+  // includeDeleted=1 — для replay-режима учителя: видеть процесс исправлений.
+  // Доступно только учителю (ученик не должен видеть свои стёртые штрихи).
+  const includeDeleted = isTeacher && url.searchParams.get("includeDeleted") === "1";
+
   const strokes = await db.stroke.findMany({
     where: {
       workspaceId: ws.id,
-      deletedAt: null,
+      ...(includeDeleted ? {} : { deletedAt: null }),
       ...(since ? { createdAt: { gt: since } } : {}),
     },
     orderBy: { createdAt: "asc" },
@@ -55,6 +59,7 @@ export async function GET(
       simulatePressure: true,
       points: true,
       createdAt: true,
+      deletedAt: true,
     },
   });
 

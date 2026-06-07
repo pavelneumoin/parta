@@ -21,9 +21,28 @@ export type NewLessonFormProps = {
   defaultClassId?: string;
 };
 
+// Готовые старты — частые типы уроков. Заполняют название + подложку одним кликом.
+const PRESETS = [
+  { label: "Координатная плоскость", title: "Координатная плоскость", kind: "blank_coord" },
+  { label: "Решение уравнений", title: "Решение уравнений", kind: "blank_grid" },
+  { label: "Устный счёт", title: "Устный счёт", kind: "blank_lined" },
+  { label: "Конспект теории", title: "Конспект теории", kind: "blank_lined" },
+  { label: "Самостоятельная", title: "Самостоятельная работа", kind: "blank_grid" },
+  { label: "Геометрия", title: "Геометрическая задача", kind: "blank_grid" },
+];
+
 export function NewLessonForm({ classes, defaultClassId }: NewLessonFormProps) {
   const [state, formAction, pending] = useActionState(createLessonAction, INITIAL);
   const [picked, setPicked] = useState("blank_grid");
+  const titleRef = useRef<HTMLInputElement>(null);
+
+  const applyPreset = (p: (typeof PRESETS)[number]) => {
+    if (titleRef.current) {
+      titleRef.current.value = p.title;
+      titleRef.current.focus();
+    }
+    setPicked(p.kind);
+  };
 
   // PDF state
   const fileInputRef = useRef<HTMLInputElement>(null);
