@@ -1,10 +1,11 @@
-<title>Парта — Доска (концепт)</title>
+<meta charset="utf-8">
+<title>Парта — Доска (концепт v2)</title>
 <style>
   :root{
     --paper:#fbfaf6; --panel:#ffffff; --chalk:#f4f1e8;
     --ink:#0f1115; --muted:#6f6a5e; --rule:#e3dfd1; --cell:#e7e3d6;
     --accent:#1e6f5c; --accent-soft:#e6f0ec; --accent-ink:#134639;
-    --red:#c9403a; --amber:#b07d1e; --laser:#e2483d;
+    --red:#c9403a; --amber:#b07d1e; --blue:#2456a8; --laser:#e2483d;
     --shadow:0 2px 10px rgba(15,17,21,.08), 0 0 0 1px var(--rule);
     --radius:14px;
   }
@@ -13,23 +14,33 @@
        color:var(--ink); background:var(--paper); overflow:hidden;
        -webkit-user-select:none; user-select:none;}
   button{font:inherit; color:inherit; background:none; border:0; cursor:pointer;}
-  button:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:8px;}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:6px;}
+  input,select{font:inherit; color:var(--ink); border:1px solid var(--rule); border-radius:8px;
+       padding:5px 8px; background:#fff; -webkit-user-select:text; user-select:text;}
 
-  /* ===== сцена ===== */
+  /* ===== сцена и фоны ===== */
   #viewport{position:fixed; inset:0; overflow:hidden;}
-  #stage{position:absolute; inset:0; transform-origin:50% 50%;
-    background:
+  #stage{position:absolute; inset:0; transform-origin:50% 50%; background:var(--paper);}
+  #stage.bg-cell{background:
+      linear-gradient(var(--cell) 1px, transparent 1px) 0 0/24px 24px,
+      linear-gradient(90deg, var(--cell) 1px, transparent 1px) 0 0/24px 24px, var(--paper);}
+  #stage.bg-line{background:
+      linear-gradient(var(--cell) 1px, transparent 1px) 0 0/100% 32px, var(--paper);}
+  #stage.bg-plane{background:
       linear-gradient(var(--cell) 1px, transparent 1px) 0 0/24px 24px,
       linear-gradient(90deg, var(--cell) 1px, transparent 1px) 0 0/24px 24px,
+      linear-gradient(#b9b2a0 2px, transparent 2px) 0 calc(50vh - 1px)/100% 100vh no-repeat,
+      linear-gradient(90deg, #b9b2a0 2px, transparent 2px) calc(50vw - 1px) 0/100vw 100% no-repeat,
       var(--paper);}
+  #stage.bg-plain{background:var(--paper);}
   #inkLayer,#liveLayer{position:absolute; inset:0; width:100%; height:100%; touch-action:none;}
   #liveLayer{pointer-events:none;}
-  #stage.tool-pen,#stage.tool-marker{cursor:crosshair;}
-  #stage.tool-eraser{cursor:cell;}
-  #stage.tool-laser{cursor:none;}
-  #stage.tool-stamp{cursor:copy;}
+  #stage.tool-pen #inkLayer,#stage.tool-marker #inkLayer{cursor:crosshair;}
+  #stage.tool-eraser #inkLayer{cursor:cell;}
+  #stage.tool-laser #inkLayer{cursor:none;}
+  #stage.tool-stamp #inkLayer{cursor:copy;}
 
-  /* контент-карточки на доске */
+  /* контент-карточки */
   .boardcard{position:absolute; width:340px; background:var(--panel);
     border-radius:12px; box-shadow:var(--shadow); padding:14px 16px 12px;}
   .boardcard .tag{display:inline-block; font-size:10px; font-weight:700;
@@ -39,6 +50,29 @@
   .boardcard p{margin:0; font-size:13.5px; line-height:1.5; -webkit-user-select:text; user-select:text;}
   .boardcard .src{margin-top:9px; font-size:11px; color:var(--muted);}
   .stampmark{position:absolute; width:34px; height:34px; pointer-events:none;}
+
+  /* ===== виджеты-инструменты ===== */
+  .widget{position:absolute; background:var(--panel); border-radius:12px;
+    box-shadow:0 6px 22px rgba(15,17,21,.14), 0 0 0 1px var(--rule); min-width:200px;}
+  .widget header{display:flex; align-items:center; gap:8px; padding:8px 8px 8px 12px;
+    border-bottom:1px solid var(--rule); cursor:grab; border-radius:12px 12px 0 0;
+    background:var(--chalk);}
+  .widget header:active{cursor:grabbing;}
+  .widget header b{font-size:12px; flex:1; white-space:nowrap;}
+  .widget header .wbtn{width:24px; height:24px; border-radius:7px; display:grid;
+    place-items:center; color:var(--muted); font-size:14px; line-height:1;}
+  .widget header .wbtn:hover{background:#fff; color:var(--ink);}
+  .widget .wbody{padding:10px 12px 12px;}
+  .widget .row{display:flex; align-items:center; gap:7px; margin-top:8px; flex-wrap:wrap;}
+  .widget .row:first-child{margin-top:0;}
+  .widget label{font-size:11.5px; color:var(--muted);}
+  .widget input[type=text],.widget input[type=number]{padding:4px 7px; font-size:12.5px;}
+  .mini{padding:4px 9px; border-radius:8px; background:var(--chalk); font-weight:600; font-size:12px;}
+  .mini:hover{background:var(--rule);}
+  .mini.on{background:var(--accent); color:#fff;}
+  .bigval{font-size:26px; font-weight:700; font-variant-numeric:tabular-nums;}
+  .wcanvas{display:block; border-radius:8px; background:#fff;}
+  .whint{font-size:10.5px; color:var(--muted); margin-top:7px;}
 
   /* ===== плавающие панели ===== */
   .panel{position:fixed; background:var(--panel); border-radius:var(--radius);
@@ -54,12 +88,10 @@
     border-radius:50%; background:var(--accent);}
   .sep{width:1px; align-self:stretch; margin:6px 3px; background:var(--rule);}
 
-  /* левый тулбар */
-  #tools{left:14px; top:50%; transform:translateY(-50%); flex-direction:column;}
+  #tools{left:14px; top:50%; transform:translateY(-50%); flex-direction:column; z-index:30;}
   #tools .sep{width:auto; height:1px; align-self:stretch; margin:3px 6px;}
 
-  /* флайаут пера */
-  #penFly{position:fixed; left:66px; top:50%; transform:translateY(-92%);
+  #penFly{position:fixed; left:66px; top:50%; transform:translateY(-96%); z-index:31;
     background:var(--panel); border-radius:12px; box-shadow:var(--shadow);
     padding:10px; display:none; grid-template-columns:repeat(4,26px); gap:8px;}
   #penFly.open{display:grid;}
@@ -71,66 +103,89 @@
   .sizebtn.sel{background:var(--chalk);}
   .sizebtn i{border-radius:50%; background:var(--ink); display:block;}
 
-  /* шапка слева */
-  #brand{left:14px; top:14px; padding:6px 12px 6px 8px; gap:9px;}
+  /* ===== панель инструментов предметов ===== */
+  #drawer{position:fixed; left:66px; top:50%; transform:translateY(-50%); width:264px;
+    background:var(--panel); border-radius:var(--radius); box-shadow:var(--shadow);
+    display:none; flex-direction:column; z-index:29; max-height:78vh;}
+  #drawer.open{display:flex;}
+  #drawerTabs{display:flex; gap:2px; padding:8px 8px 0; flex-wrap:wrap;}
+  #drawerTabs button{font-size:11.5px; font-weight:700; padding:6px 9px; border-radius:8px;
+    color:var(--muted);}
+  #drawerTabs button.cur{background:var(--accent-soft); color:var(--accent-ink);}
+  #drawerGrid{display:grid; grid-template-columns:1fr 1fr; gap:7px; padding:10px;
+    overflow-y:auto;}
+  .instr{display:flex; flex-direction:column; align-items:center; gap:6px; padding:11px 6px 9px;
+    border-radius:10px; background:var(--chalk); font-size:11.5px; font-weight:600; line-height:1.2;
+    text-align:center;}
+  .instr:hover{background:var(--rule);}
+  .instr svg{width:22px; height:22px; stroke:var(--ink); fill:none; stroke-width:1.6;
+    stroke-linecap:round; stroke-linejoin:round;}
+  #drawerFoot{padding:8px 12px 10px; border-top:1px solid var(--rule);}
+  #drawerFoot .row{display:flex; gap:5px; align-items:center;}
+  #drawerFoot span{font-size:10.5px; font-weight:700; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--muted); margin-right:2px;}
+  .bgbtn{width:26px; height:26px; border-radius:7px; border:1px solid var(--rule); padding:0;}
+  .bgbtn.sel{outline:2px solid var(--accent);}
+  .bgbtn.b-cell{background:linear-gradient(var(--cell) 1px,transparent 1px) 0 0/7px 7px,
+    linear-gradient(90deg,var(--cell) 1px,transparent 1px) 0 0/7px 7px,#fff;}
+  .bgbtn.b-line{background:linear-gradient(var(--cell) 1px,transparent 1px) 0 0/100% 8px,#fff;}
+  .bgbtn.b-plane{background:linear-gradient(#b9b2a0 1.5px,transparent 1.5px) 0 11px/100% 100% no-repeat,
+    linear-gradient(90deg,#b9b2a0 1.5px,transparent 1.5px) 11px 0/100% 100% no-repeat,#fff;}
+  .bgbtn.b-plain{background:#fff;}
+
+  /* шапка */
+  #brand{left:14px; top:14px; padding:6px 12px 6px 8px; gap:9px; z-index:30;}
   #logo{width:26px; height:26px; border-radius:7px; background:var(--ink);
     display:grid; place-items:center; flex:none;}
   #logo b{width:14px; height:3px; background:var(--accent); border-radius:2px; margin-top:7px;}
   #lesson{line-height:1.25;}
   #lesson strong{display:block; font-size:13px;}
   #lesson span{font-size:11px; color:var(--muted);}
-  #brand .sep{margin:2px 4px;}
   .txtbtn{padding:8px 10px; border-radius:9px; font-weight:600; font-size:12.5px;
     display:flex; align-items:center; gap:7px;}
   .txtbtn:hover{background:var(--chalk);}
   .txtbtn svg{width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.7;
     stroke-linecap:round; stroke-linejoin:round;}
 
-  /* ИИ-композер */
+  /* композер */
   #composer{top:14px; left:50%; transform:translateX(-50%); flex-direction:column;
-    align-items:stretch; width:min(560px, 44vw); padding:10px 12px; gap:8px;}
-  #composer input{border:0; outline:0; background:none; font:15px/1.3 inherit;
-    color:var(--ink); width:100%; -webkit-user-select:text; user-select:text;}
+    align-items:stretch; width:min(560px,44vw); padding:10px 12px; gap:8px; z-index:30;}
+  #composer input{border:0; outline:0; background:none; font-size:15px; width:100%; padding:0;}
   #composer input::placeholder{color:var(--muted);}
   #composerRow{display:flex; align-items:center; gap:6px;}
   .chip{display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
-    padding:5px 10px; border-radius:999px; background:var(--chalk); color:var(--ink);}
+    padding:5px 10px; border-radius:999px; background:var(--chalk);}
   .chip:hover{background:var(--rule);}
   .chip.sel{background:var(--accent-soft); color:var(--accent-ink);
     box-shadow:inset 0 0 0 1px var(--accent);}
-  .chip svg{width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:1.8;
-    stroke-linecap:round;}
+  .chip svg{width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round;}
   #modelChip{margin-left:auto; color:var(--muted); font-weight:600; font-size:12px;
     display:flex; align-items:center; gap:6px;}
   #sendBtn{width:30px; height:30px; border-radius:50%; background:var(--accent);
-    color:#fff; display:grid; place-items:center; flex:none;}
+    display:grid; place-items:center; flex:none;}
   #sendBtn svg{width:15px; height:15px; stroke:#fff; fill:none; stroke-width:2;
     stroke-linecap:round; stroke-linejoin:round;}
   #sendBtn:hover{background:var(--accent-ink);}
 
-  /* правая шапка */
-  #services{right:96px; top:14px;}
+  #services{right:96px; top:14px; z-index:30;}
   #avatar{width:30px; height:30px; border-radius:50%; background:var(--accent);
     color:#fff; font-size:12px; font-weight:700; display:grid; place-items:center; margin:0 3px;}
 
-  /* часы */
-  #clockCard{position:fixed; right:14px; top:10px; width:72px; height:72px;
+  #clockCard{position:fixed; right:14px; top:10px; width:72px; height:72px; z-index:30;
     background:var(--panel); border-radius:50%; box-shadow:var(--shadow);}
   #clockCard svg{width:100%; height:100%;}
 
-  /* низ */
-  #history{left:14px; bottom:14px;}
-  #pages{left:50%; bottom:14px; transform:translateX(-50%); padding:6px 8px;}
+  #history{left:14px; bottom:14px; z-index:30;}
+  #pages{left:50%; bottom:14px; transform:translateX(-50%); padding:6px 8px; z-index:30;}
   .pagebtn{min-width:30px; height:30px; padding:0 6px; border-radius:8px; font-weight:600;
     font-variant-numeric:tabular-nums; color:var(--muted);}
   .pagebtn:hover{background:var(--chalk);}
   .pagebtn.cur{background:var(--ink); color:#fff;}
-  #zoomer{right:14px; bottom:14px; padding:4px 6px;}
+  #zoomer{right:14px; bottom:14px; padding:4px 6px; z-index:30;}
   #zoomVal{min-width:44px; text-align:center; font-weight:600;
     font-variant-numeric:tabular-nums; font-size:12.5px;}
 
-  /* чат */
-  #chat{position:fixed; right:14px; top:96px; bottom:64px; width:300px;
+  #chat{position:fixed; right:14px; top:96px; bottom:64px; width:300px; z-index:28;
     background:var(--panel); border-radius:var(--radius); box-shadow:var(--shadow);
     display:none; flex-direction:column; overflow:hidden;}
   #chat.open{display:flex;}
@@ -150,23 +205,38 @@
 
   .tip{position:fixed; transform:translate(-50%,0); background:var(--ink); color:#fff;
     font-size:11.5px; padding:5px 10px; border-radius:7px; pointer-events:none;
-    opacity:0; transition:opacity .15s;}
+    opacity:0; transition:opacity .15s; z-index:70;}
   .tip.show{opacity:1;}
   #laserDot{position:fixed; width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%;
     background:radial-gradient(circle, var(--laser) 0 40%, rgba(226,72,61,.25) 70%, transparent 72%);
     pointer-events:none; display:none; z-index:60;}
 
+  /* код */
+  .codebox{width:320px; min-height:120px; background:#14171c; color:#e8e6df; border-radius:9px;
+    font:12.5px/1.55 ui-monospace,Consolas,monospace; padding:11px 13px; white-space:pre-wrap;
+    -webkit-user-select:text; user-select:text; outline:none;}
+  .codebox .kw{color:#7fb8a4;} .codebox .st{color:#d8a25e;} .codebox .nu{color:#8fb4e8;}
+  .codebox .cm{color:#6f6a5e;}
+
+  table.truth{border-collapse:collapse; font-variant-numeric:tabular-nums; font-size:12.5px;}
+  table.truth th,table.truth td{border:1px solid var(--rule); padding:3px 10px; text-align:center;}
+  table.truth th{background:var(--chalk);}
+  table.truth td.res{font-weight:700; color:var(--accent-ink); background:var(--accent-soft);}
+
+  #light{display:flex; flex-direction:column; gap:8px; align-items:center; padding:4px 2px;}
+  #light button{width:44px; height:44px; border-radius:50%; border:2px solid var(--rule); opacity:.25;}
+  #light button.on{opacity:1; border-color:transparent; box-shadow:0 0 14px currentColor;}
+
   @media (max-width:900px){
-    #composer{width:min(440px,60vw);}
-    #chat{width:min(300px,80vw);}
+    #composer{width:min(440px,58vw);}
     #services{right:14px; top:96px; flex-direction:column;}
     #clockCard{display:none;}
   }
-  @media (prefers-reduced-motion: reduce){ *{transition:none !important;} }
+  @media (prefers-reduced-motion: reduce){ *{transition:none !important; animation:none !important;} }
 </style>
 
 <div id="viewport">
-  <div id="stage" class="tool-pen">
+  <div id="stage" class="bg-cell tool-pen">
     <canvas id="inkLayer"></canvas>
     <canvas id="liveLayer"></canvas>
     <div class="boardcard" style="left:calc(50% - 170px); top:170px;">
@@ -180,13 +250,9 @@
 </div>
 <div id="laserDot"></div>
 
-<!-- левый тулбар -->
-<nav class="panel" id="tools" aria-label="Инструменты">
+<nav class="panel" id="tools" aria-label="Инструменты рисования">
   <button class="iconbtn" data-tool="select" data-tip="Выбор">
     <svg viewBox="0 0 24 24"><path d="M5 3l14 8-6.5 1.5L15 19l-2.5 1-2.5-6.5L5 17z"/></svg></button>
-  <button class="iconbtn" data-tool="hand" data-tip="Рука — перемещение">
-    <svg viewBox="0 0 24 24"><path d="M8 12V6.5a1.5 1.5 0 0 1 3 0V11m0-5.5v-1a1.5 1.5 0 0 1 3 0V11m0-4.5a1.5 1.5 0 0 1 3 0V13m-9-1v6a4 4 0 0 0 4 4h1.6a4 4 0 0 0 3.7-2.4l1.9-4.8a1.6 1.6 0 0 0-2.9-1.3L15 15"/></svg></button>
-  <div class="sep"></div>
   <button class="iconbtn active" data-tool="pen" id="penBtn" data-tip="Перо · цвет и толщина">
     <svg viewBox="0 0 24 24"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19l-4 1z"/><path d="M13.5 7.5l3 3"/></svg>
     <span class="dot" id="penDot"></span></button>
@@ -195,18 +261,15 @@
   <button class="iconbtn" data-tool="eraser" data-tip="Ластик">
     <svg viewBox="0 0 24 24"><path d="M7 20h11M6 14l7-7a2 2 0 0 1 3 0l3 3a2 2 0 0 1 0 3l-4 4H9l-3-3z"/></svg></button>
   <div class="sep"></div>
-  <button class="iconbtn" data-tool="text" data-tip="Текст (в разработке)">
-    <svg viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16m-3 0h6"/></svg></button>
-  <button class="iconbtn" data-tool="shape" data-tip="Фигуры (в разработке)">
-    <svg viewBox="0 0 24 24"><rect x="3.5" y="10" width="10" height="10" rx="1.5"/><circle cx="16" cy="8" r="4.5"/></svg></button>
-  <div class="sep"></div>
   <button class="iconbtn" data-tool="laser" data-tip="Лазерная указка">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 4V2M12 22v-2M4 12H2m20 0h-2M6.3 6.3 4.9 4.9m14.2 14.2-1.4-1.4m0-11.4 1.4-1.4M4.9 19.1l1.4-1.4"/></svg></button>
   <button class="iconbtn" data-tool="stamp" data-tip="Штамп учителя ✓">
     <svg viewBox="0 0 24 24"><path d="M5 13l4.5 4.5L19 8"/></svg></button>
+  <div class="sep"></div>
+  <button class="iconbtn" id="drawerBtn" data-tip="Предметные инструменты" aria-expanded="false">
+    <svg viewBox="0 0 24 24"><path d="M4 8h16M4 8v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M4 8l2-4h12l2 4M12 12v4m-2-2h4"/></svg></button>
 </nav>
 
-<!-- флайаут пера -->
 <div id="penFly" role="menu" aria-label="Цвет и толщина пера">
   <button class="swatch sel" style="background:#0f1115" data-color="#0f1115" aria-label="Чернила"></button>
   <button class="swatch" style="background:#1e6f5c" data-color="#1e6f5c" aria-label="Зелёный"></button>
@@ -220,7 +283,20 @@
   </div>
 </div>
 
-<!-- шапка -->
+<!-- панель предметных инструментов -->
+<div id="drawer" aria-label="Предметные инструменты">
+  <div id="drawerTabs" role="tablist"></div>
+  <div id="drawerGrid"></div>
+  <div id="drawerFoot">
+    <div class="row"><span>Фон</span>
+      <button class="bgbtn b-cell sel" data-bg="bg-cell" data-tip="Клетка"></button>
+      <button class="bgbtn b-line" data-bg="bg-line" data-tip="Линейка"></button>
+      <button class="bgbtn b-plane" data-bg="bg-plane" data-tip="Координатная плоскость"></button>
+      <button class="bgbtn b-plain" data-bg="bg-plain" data-tip="Чистый лист"></button>
+    </div>
+  </div>
+</div>
+
 <header class="panel" id="brand">
   <span id="logo" aria-hidden="true"><b></b></span>
   <span id="lesson"><strong>Алгебра · 7А</strong><span>Линейные уравнения · урок 12</span></span>
@@ -240,7 +316,6 @@
   <span id="avatar" title="Павел Сергеевич">ПС</span>
 </div>
 
-<!-- часы -->
 <div id="clockCard" title="Время урока">
   <svg viewBox="0 0 100 100" aria-label="Часы">
     <circle cx="50" cy="50" r="46" fill="#fff" stroke="#e3dfd1" stroke-width="1.5"/>
@@ -252,10 +327,9 @@
   </svg>
 </div>
 
-<!-- ИИ-композер -->
 <div class="panel" id="composer">
   <input id="ask" type="text" placeholder="Что добавить на доску? Опишите — задачу, схему, клетку…"
-         aria-label="Запрос к ИИ">
+         aria-label="Запрос к ИИ" style="border:0">
   <div id="composerRow">
     <button class="chip sel" data-kind="task">
       <svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M9 9h6M9 13h6"/></svg>Задача из банка</button>
@@ -271,7 +345,6 @@
   </div>
 </div>
 
-<!-- низ -->
 <div class="panel" id="history">
   <button class="iconbtn danger" id="clearBtn" data-tip="Очистить страницу">
     <svg viewBox="0 0 24 24"><path d="M5 7h14M9 7V5h6v2m-8 0 1 13h8l1-13"/></svg></button>
@@ -288,7 +361,6 @@
   <button class="iconbtn" id="zoomIn" data-tip="Крупнее"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
 </div>
 
-<!-- чат -->
 <aside id="chat" aria-label="Чат урока">
   <div id="chatTabs">
     <button class="cur" data-tab="chat">Чат</button>
@@ -301,254 +373,912 @@
 
 <script>
 (() => {
-  const $ = s => document.querySelector(s);
-  const stage = $('#stage'), ink = $('#inkLayer'), live = $('#liveLayer');
-  const ictx = ink.getContext('2d'), lctx = live.getContext('2d');
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+'use strict';
+const $ = s => document.querySelector(s);
+const stage = $('#stage'), ink = $('#inkLayer'), live = $('#liveLayer');
+const ictx = ink.getContext('2d'), lctx = live.getContext('2d');
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const SVGNS = 'http://www.w3.org/2000/svg';
 
-  /* ---- размер холста ---- */
-  const dpr = Math.min(devicePixelRatio || 1, 2);
-  function sizeCanvas(){
-    for (const c of [ink, live]) {
-      const img = c === ink ? c.toDataURL() : null;
-      c.width = innerWidth * dpr; c.height = innerHeight * dpr;
-      c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
-      if (img && img.length > 200) { const im = new Image();
-        im.onload = () => ictx.drawImage(im, 0, 0, innerWidth, innerHeight); im.src = img; }
-    }
+/* ================= холст и рисование ================= */
+const dpr = Math.min(devicePixelRatio || 1, 2);
+function sizeCanvas(){
+  for (const c of [ink, live]) {
+    c.width = innerWidth * dpr; c.height = innerHeight * dpr;
+    c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
   }
-  sizeCanvas(); addEventListener('resize', sizeCanvas);
+}
+sizeCanvas(); addEventListener('resize', sizeCanvas);
 
-  /* ---- состояние ---- */
-  let tool = 'pen', penColor = '#0f1115', penSize = 3.5;
-  let drawing = false, pts = [], undoStack = [];
-  const laserPts = [];
+let tool = 'pen', penColor = '#0f1115', penSize = 3.5;
+let drawing = false, pts = [], undoStack = [];
+const laserPts = [];
 
-  /* ---- инструменты ---- */
-  const toolBtns = document.querySelectorAll('#tools [data-tool]');
-  const penFly = $('#penFly');
-  toolBtns.forEach(b => b.addEventListener('click', () => {
-    const t = b.dataset.tool;
-    if (t === 'pen' && tool === 'pen') { penFly.classList.toggle('open'); return; }
-    penFly.classList.remove('open');
-    if (t === 'text' || t === 'shape' || t === 'select' || t === 'hand') {
-      flashTip(b, b.dataset.tip + ' — в мокапе не активен'); return;
-    }
-    tool = t;
-    toolBtns.forEach(x => x.classList.toggle('active', x === b));
-    stage.className = 'tool-' + tool;
-    $('#laserDot').style.display = 'none';
-  }));
-  penFly.querySelectorAll('.swatch').forEach(s => s.addEventListener('click', () => {
-    penFly.querySelectorAll('.swatch').forEach(x => x.classList.remove('sel'));
-    s.classList.add('sel'); penColor = s.dataset.color;
-    $('#penDot').style.background = penColor;
-  }));
-  penFly.querySelectorAll('.sizebtn').forEach(s => s.addEventListener('click', () => {
-    penFly.querySelectorAll('.sizebtn').forEach(x => x.classList.remove('sel'));
-    s.classList.add('sel'); penSize = +s.dataset.size;
-  }));
+const toolBtns = document.querySelectorAll('#tools [data-tool]');
+const penFly = $('#penFly');
+toolBtns.forEach(b => b.addEventListener('click', () => {
+  const t = b.dataset.tool;
+  if (t === 'pen' && tool === 'pen') { penFly.classList.toggle('open'); return; }
+  penFly.classList.remove('open');
+  if (t === 'select') { flashTip(b, 'Выбор — в мокапе виджеты двигаются за шапку'); return; }
+  tool = t;
+  toolBtns.forEach(x => x.classList.toggle('active', x === b));
+  stage.classList.remove('tool-pen','tool-marker','tool-eraser','tool-laser','tool-stamp','tool-select');
+  stage.classList.add('tool-' + tool);
+  $('#laserDot').style.display = 'none';
+}));
+penFly.querySelectorAll('.swatch').forEach(s => s.addEventListener('click', () => {
+  penFly.querySelectorAll('.swatch').forEach(x => x.classList.remove('sel'));
+  s.classList.add('sel'); penColor = s.dataset.color;
+  $('#penDot').style.background = penColor;
+}));
+penFly.querySelectorAll('.sizebtn').forEach(s => s.addEventListener('click', () => {
+  penFly.querySelectorAll('.sizebtn').forEach(x => x.classList.remove('sel'));
+  s.classList.add('sel'); penSize = +s.dataset.size;
+}));
 
-  /* ---- рисование ---- */
-  function xy(e){ return [e.clientX, e.clientY]; }
-  function strokeStyle(ctx){
-    if (tool === 'marker') { ctx.strokeStyle = 'rgba(255,214,68,.45)'; ctx.lineWidth = 16; }
-    else { ctx.strokeStyle = penColor; ctx.lineWidth = penSize; }
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+const xy = e => [e.clientX, e.clientY];
+function strokeStyle(ctx){
+  if (tool === 'marker') { ctx.strokeStyle = 'rgba(255,214,68,.45)'; ctx.lineWidth = 16; }
+  else { ctx.strokeStyle = penColor; ctx.lineWidth = penSize; }
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+}
+function drawPath(ctx, p){
+  if (p.length < 2) return;
+  ctx.beginPath(); ctx.moveTo(p[0][0], p[0][1]);
+  for (let i = 1; i < p.length - 1; i++) {
+    const mx = (p[i][0] + p[i+1][0]) / 2, my = (p[i][1] + p[i+1][1]) / 2;
+    ctx.quadraticCurveTo(p[i][0], p[i][1], mx, my);
   }
-  function drawPath(ctx, p){
-    if (p.length < 2) return;
-    ctx.beginPath(); ctx.moveTo(p[0][0], p[0][1]);
-    for (let i = 1; i < p.length - 1; i++) {
-      const mx = (p[i][0] + p[i+1][0]) / 2, my = (p[i][1] + p[i+1][1]) / 2;
-      ctx.quadraticCurveTo(p[i][0], p[i][1], mx, my);
-    }
-    ctx.stroke();
-  }
-  ink.addEventListener('pointerdown', e => {
-    if (tool === 'laser') return;
-    if (tool === 'stamp') { placeStamp(e); return; }
-    drawing = true; pts = [xy(e)]; ink.setPointerCapture(e.pointerId);
-    undoStack.push(ictx.getImageData(0, 0, ink.width, ink.height));
-    if (undoStack.length > 20) undoStack.shift();
-  });
-  ink.addEventListener('pointermove', e => {
-    if (tool === 'laser') { laserMove(e); return; }
-    if (!drawing) return;
-    pts.push(xy(e));
-    lctx.clearRect(0, 0, innerWidth, innerHeight);
-    if (tool === 'eraser') {
-      ictx.save(); ictx.globalCompositeOperation = 'destination-out';
-      ictx.lineWidth = 26; ictx.lineCap = 'round'; ictx.lineJoin = 'round';
-      drawPath(ictx, pts.slice(-3)); ictx.restore();
-    } else { strokeStyle(lctx); drawPath(lctx, pts); }
-  });
-  const finish = () => {
-    if (!drawing) return; drawing = false;
-    if (tool !== 'eraser') { strokeStyle(ictx); drawPath(ictx, pts); }
-    lctx.clearRect(0, 0, innerWidth, innerHeight); pts = [];
-  };
-  ink.addEventListener('pointerup', finish);
-  ink.addEventListener('pointercancel', finish);
+  ctx.stroke();
+}
+ink.addEventListener('pointerdown', e => {
+  if (tool === 'laser') return;
+  if (tool === 'stamp') { placeStamp(e); return; }
+  drawing = true; pts = [xy(e)]; ink.setPointerCapture(e.pointerId);
+  undoStack.push(ictx.getImageData(0, 0, ink.width, ink.height));
+  if (undoStack.length > 20) undoStack.shift();
+});
+ink.addEventListener('pointermove', e => {
+  if (tool === 'laser') { laserMove(e); return; }
+  if (!drawing) return;
+  pts.push(xy(e));
+  lctx.clearRect(0, 0, innerWidth, innerHeight);
+  if (tool === 'eraser') {
+    ictx.save(); ictx.globalCompositeOperation = 'destination-out';
+    ictx.lineWidth = 26; ictx.lineCap = 'round'; ictx.lineJoin = 'round';
+    drawPath(ictx, pts.slice(-3)); ictx.restore();
+  } else { strokeStyle(lctx); drawPath(lctx, pts); }
+});
+const finishStroke = () => {
+  if (!drawing) return; drawing = false;
+  if (tool !== 'eraser') { strokeStyle(ictx); drawPath(ictx, pts); }
+  lctx.clearRect(0, 0, innerWidth, innerHeight); pts = [];
+};
+ink.addEventListener('pointerup', finishStroke);
+ink.addEventListener('pointercancel', finishStroke);
 
-  /* ---- лазер ---- */
-  const laserDot = $('#laserDot');
-  function laserMove(e){
-    laserDot.style.display = 'block';
-    laserDot.style.left = e.clientX + 'px'; laserDot.style.top = e.clientY + 'px';
-    if (!reduced) laserPts.push({ x: e.clientX, y: e.clientY, t: performance.now() });
+const laserDot = $('#laserDot');
+function laserMove(e){
+  laserDot.style.display = 'block';
+  laserDot.style.left = e.clientX + 'px'; laserDot.style.top = e.clientY + 'px';
+  if (!reduced) { laserPts.push({ x: e.clientX, y: e.clientY, t: performance.now() }); ensureLaserLoop(); }
+}
+let laserRAF = null;
+function laserLoop(){
+  lctx.clearRect(0, 0, innerWidth, innerHeight);
+  const now = performance.now();
+  while (laserPts.length && now - laserPts[0].t > 550) laserPts.shift();
+  for (let i = 1; i < laserPts.length; i++) {
+    const a = laserPts[i-1], b = laserPts[i], k = 1 - (now - b.t) / 550;
+    lctx.strokeStyle = `rgba(226,72,61,${0.55 * k})`;
+    lctx.lineWidth = 5 * k + 1; lctx.lineCap = 'round';
+    lctx.beginPath(); lctx.moveTo(a.x, a.y); lctx.lineTo(b.x, b.y); lctx.stroke();
   }
-  (function laserLoop(){
-    if (!reduced) {
-      lctx.clearRect(0, 0, innerWidth, innerHeight);
-      const now = performance.now();
-      while (laserPts.length && now - laserPts[0].t > 550) laserPts.shift();
-      for (let i = 1; i < laserPts.length; i++) {
-        const a = laserPts[i-1], b = laserPts[i], k = 1 - (now - b.t) / 550;
-        lctx.strokeStyle = `rgba(226,72,61,${0.55 * k})`;
-        lctx.lineWidth = 5 * k + 1; lctx.lineCap = 'round';
-        lctx.beginPath(); lctx.moveTo(a.x, a.y); lctx.lineTo(b.x, b.y); lctx.stroke();
-      }
-    }
-    requestAnimationFrame(laserLoop);
-  })();
+  // цикл живёт только пока активен лазер и есть что гасить — иначе рендер спит
+  laserRAF = (tool === 'laser' && (laserPts.length || drawing))
+    ? requestAnimationFrame(laserLoop) : null;
+}
+function ensureLaserLoop(){ if (!reduced && laserRAF === null) laserRAF = requestAnimationFrame(laserLoop); }
 
-  /* ---- штампы учителя ---- */
-  function placeStamp(e){
-    const d = document.createElement('div');
-    d.className = 'stampmark';
-    d.style.left = (e.clientX - 17) + 'px'; d.style.top = (e.clientY - 17) + 'px';
-    d.innerHTML = '<svg viewBox="0 0 34 34"><circle cx="17" cy="17" r="15" fill="#e6f0ec" stroke="#1e6f5c" stroke-width="2"/><path d="M10 17.5l4.5 4.5L24 12" fill="none" stroke="#1e6f5c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    stage.appendChild(d);
-  }
+function placeStamp(e){
+  const d = document.createElement('div');
+  d.className = 'stampmark';
+  d.style.left = (e.clientX - 17) + 'px'; d.style.top = (e.clientY - 17) + 'px';
+  d.innerHTML = '<svg viewBox="0 0 34 34"><circle cx="17" cy="17" r="15" fill="#e6f0ec" stroke="#1e6f5c" stroke-width="2"/><path d="M10 17.5l4.5 4.5L24 12" fill="none" stroke="#1e6f5c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  stage.appendChild(d);
+}
 
-  /* ---- undo / очистка ---- */
-  $('#undoBtn').addEventListener('click', () => {
-    const s = undoStack.pop(); if (s) ictx.putImageData(s, 0, 0);
-  });
-  $('#clearBtn').addEventListener('click', () => {
-    undoStack.push(ictx.getImageData(0, 0, ink.width, ink.height));
-    ictx.clearRect(0, 0, innerWidth, innerHeight);
-    stage.querySelectorAll('.stampmark').forEach(n => n.remove());
-  });
+$('#undoBtn').addEventListener('click', () => {
+  const s = undoStack.pop(); if (s) ictx.putImageData(s, 0, 0);
+});
+$('#clearBtn').addEventListener('click', () => {
+  undoStack.push(ictx.getImageData(0, 0, ink.width, ink.height));
+  ictx.clearRect(0, 0, innerWidth, innerHeight);
+  stage.querySelectorAll('.stampmark').forEach(n => n.remove());
+});
 
-  /* ---- страницы ---- */
-  const PAGES = 4; let cur = 0; const saved = Array(PAGES).fill(null);
-  const pagesNav = $('#pages');
-  for (let i = 0; i < PAGES; i++) {
-    const b = document.createElement('button');
-    b.className = 'pagebtn' + (i === 0 ? ' cur' : ''); b.textContent = i + 1;
-    b.addEventListener('click', () => switchPage(i)); pagesNav.appendChild(b);
-  }
-  const addB = document.createElement('button');
-  addB.className = 'pagebtn'; addB.textContent = '+'; addB.title = 'Новая страница (в мокапе — 4)';
-  pagesNav.appendChild(addB);
-  function switchPage(i){
-    if (i === cur) return;
-    saved[cur] = ink.toDataURL(); undoStack.length = 0;
-    ictx.clearRect(0, 0, innerWidth, innerHeight);
-    if (saved[i]) { const im = new Image();
-      im.onload = () => ictx.drawImage(im, 0, 0, innerWidth, innerHeight); im.src = saved[i]; }
-    cur = i;
-    pagesNav.querySelectorAll('.pagebtn').forEach((b, j) => b.classList.toggle('cur', j === i));
-  }
+/* ================= страницы ================= */
+const PAGES = 4; let cur = 0; const saved = Array(PAGES).fill(null);
+const pagesNav = $('#pages');
+for (let i = 0; i < PAGES; i++) {
+  const b = document.createElement('button');
+  b.className = 'pagebtn' + (i === 0 ? ' cur' : ''); b.textContent = i + 1;
+  b.addEventListener('click', () => switchPage(i)); pagesNav.appendChild(b);
+}
+const addB = document.createElement('button');
+addB.className = 'pagebtn'; addB.textContent = '+'; addB.title = 'Новая страница (в мокапе — 4)';
+pagesNav.appendChild(addB);
+function switchPage(i){
+  if (i === cur) return;
+  saved[cur] = ink.toDataURL(); undoStack.length = 0;
+  ictx.clearRect(0, 0, innerWidth, innerHeight);
+  if (saved[i]) { const im = new Image();
+    im.onload = () => ictx.drawImage(im, 0, 0, innerWidth, innerHeight); im.src = saved[i]; }
+  cur = i;
+  pagesNav.querySelectorAll('.pagebtn').forEach((b, j) => b.classList.toggle('cur', j === i));
+}
 
-  /* ---- зум ---- */
-  let zoom = 1;
-  const apply = () => { stage.style.transform = `scale(${zoom})`;
-    $('#zoomVal').textContent = Math.round(zoom * 100) + '%'; };
-  $('#zoomIn').addEventListener('click', () => { zoom = Math.min(2, zoom + .1); apply(); });
-  $('#zoomOut').addEventListener('click', () => { zoom = Math.max(.5, zoom - .1); apply(); });
+/* ================= зум ================= */
+let zoom = 1;
+const applyZoom = () => { stage.style.transform = `scale(${zoom})`;
+  $('#zoomVal').textContent = Math.round(zoom * 100) + '%'; };
+$('#zoomIn').addEventListener('click', () => { zoom = Math.min(2, zoom + .1); applyZoom(); });
+$('#zoomOut').addEventListener('click', () => { zoom = Math.max(.5, zoom - .1); applyZoom(); });
 
-  /* ---- часы ---- */
-  const ticks = $('#ticks');
-  for (let i = 0; i < 12; i++) {
-    const a = i * 30 * Math.PI / 180, r1 = i % 3 ? 42 : 39;
-    ticks.innerHTML += `<line x1="${50 + r1 * Math.sin(a)}" y1="${50 - r1 * Math.cos(a)}"
-      x2="${50 + 45 * Math.sin(a)}" y2="${50 - 45 * Math.cos(a)}"
-      stroke-width="${i % 3 ? 1 : 2.2}"/>`;
-  }
-  function clock(){
-    const d = new Date(), h = d.getHours() % 12, m = d.getMinutes(), s = d.getSeconds();
-    const rot = (el, deg) => $(el).setAttribute('transform', `rotate(${deg} 50 50)`);
-    rot('#hourHand', h * 30 + m * .5); rot('#minHand', m * 6); rot('#secHand', s * 6);
-  }
-  clock(); setInterval(clock, reduced ? 30000 : 1000);
-  if (reduced) $('#secHand').style.display = 'none';
+/* ================= часы ================= */
+const ticks = $('#ticks');
+for (let i = 0; i < 12; i++) {
+  const a = i * 30 * Math.PI / 180, r1 = i % 3 ? 42 : 39;
+  const l = document.createElementNS(SVGNS, 'line');
+  l.setAttribute('x1', 50 + r1 * Math.sin(a)); l.setAttribute('y1', 50 - r1 * Math.cos(a));
+  l.setAttribute('x2', 50 + 45 * Math.sin(a)); l.setAttribute('y2', 50 - 45 * Math.cos(a));
+  l.setAttribute('stroke-width', i % 3 ? 1 : 2.2); ticks.appendChild(l);
+}
+function clockTick(){
+  const d = new Date(), h = d.getHours() % 12, m = d.getMinutes(), s = d.getSeconds();
+  const rot = (sel, deg) => $(sel).setAttribute('transform', `rotate(${deg} 50 50)`);
+  rot('#hourHand', h * 30 + m * .5); rot('#minHand', m * 6); rot('#secHand', s * 6);
+}
+clockTick(); setInterval(clockTick, reduced ? 30000 : 1000);
+if (reduced) $('#secHand').style.display = 'none';
 
-  /* ---- чат + ИИ-композер ---- */
-  const chat = $('#chat'), chatBody = $('#chatBody');
-  $('#chatBtn').addEventListener('click', () => chat.classList.toggle('open'));
-  document.querySelectorAll('#chatTabs button').forEach(t => t.addEventListener('click', () => {
-    document.querySelectorAll('#chatTabs button').forEach(x => x.classList.remove('cur'));
-    t.classList.add('cur');
-  }));
-  function say(cls, who, text){
-    $('#chatEmpty')?.remove();
-    const m = document.createElement('div'); m.className = 'msg ' + cls;
-    m.innerHTML = `<span class="who">${who}</span>${text}`;
-    chatBody.appendChild(m); chatBody.scrollTop = 1e9;
-  }
-  let kind = 'task';
-  document.querySelectorAll('.chip[data-kind]').forEach(c => c.addEventListener('click', () => {
-    document.querySelectorAll('.chip[data-kind]').forEach(x => x.classList.remove('sel'));
-    c.classList.add('sel'); kind = c.dataset.kind;
-  }));
-  const KINDNAME = { task: 'задачу из банка', scheme: 'схему', grid: 'клетчатое поле' };
-  function send(){
-    const q = $('#ask').value.trim() || 'по теме урока';
-    chat.classList.add('open');
-    document.querySelector('#chatTabs [data-tab=ai]').click();
-    say('me', 'Вы', `Создай ${KINDNAME[kind]}: ${q}`);
-    setTimeout(() => {
-      say('ai', 'Неумошка ИИ', `Добавила ${KINDNAME[kind]} на доску. В продукте здесь
-        подключается банк из 5385 задач и генератор схем.`);
-      dropCard(q);
-    }, reduced ? 0 : 450);
-    $('#ask').value = '';
-  }
-  $('#sendBtn').addEventListener('click', send);
-  $('#ask').addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
-  function dropCard(q){
-    const d = document.createElement('div'); d.className = 'boardcard';
-    d.style.left = (innerWidth / 2 - 170 + (Math.random() * 120 - 60)) + 'px';
-    d.style.top = (240 + Math.random() * 90) + 'px';
-    d.innerHTML = `<span class="tag">${kind === 'task' ? 'Задача · из банка Неумошки'
-        : kind === 'scheme' ? 'Схема · ИИ' : 'Клетка · поле для решения'}</span>
-      <h3>${kind === 'task' ? '№ 2 — Новая задача' : kind === 'scheme' ? 'Схема' : 'Поле для решения'}</h3>
-      <p>${kind === 'grid'
-        ? '<span style="display:block;height:84px;background:linear-gradient(#e7e3d6 1px,transparent 1px) 0 0/12px 12px,linear-gradient(90deg,#e7e3d6 1px,transparent 1px) 0 0/12px 12px;border:1px solid #e3dfd1;border-radius:6px"></span>'
-        : 'Запрос: «' + q + '». Содержимое подставит генератор в продукте.'}</p>
-      <div class="src">мокап · клик по доске продолжает работу</div>`;
-    stage.appendChild(d);
-  }
+/* ================= чат ================= */
+const chat = $('#chat'), chatBody = $('#chatBody');
+$('#chatBtn').addEventListener('click', () => chat.classList.toggle('open'));
+document.querySelectorAll('#chatTabs button').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('#chatTabs button').forEach(x => x.classList.remove('cur'));
+  t.classList.add('cur');
+}));
+function say(cls, who, text){
+  const e = $('#chatEmpty'); if (e) e.remove();
+  const m = document.createElement('div'); m.className = 'msg ' + cls;
+  m.innerHTML = `<span class="who">${who}</span>${text}`;
+  chatBody.appendChild(m); chatBody.scrollTop = 1e9;
+}
+$('#inviteBtn').addEventListener('click', () => {
+  say('ai', 'Система', 'Код класса: <b>ПАРТА-7А2</b> — ученики вводят его на parta.ru/j');
+  chat.classList.add('open');
+});
 
-  /* ---- тултипы ---- */
-  const tip = $('#tip'); let tipT;
-  document.querySelectorAll('[data-tip]').forEach(el => {
+/* ================= ИИ-композер ================= */
+let kind = 'task';
+document.querySelectorAll('.chip[data-kind]').forEach(c => c.addEventListener('click', () => {
+  document.querySelectorAll('.chip[data-kind]').forEach(x => x.classList.remove('sel'));
+  c.classList.add('sel'); kind = c.dataset.kind;
+}));
+const KINDNAME = { task: 'задачу из банка', scheme: 'схему', grid: 'клетчатое поле' };
+function sendAsk(){
+  const q = $('#ask').value.trim() || 'по теме урока';
+  chat.classList.add('open');
+  say('me', 'Вы', `Создай ${KINDNAME[kind]}: ${q}`);
+  setTimeout(() => {
+    say('ai', 'Неумошка ИИ', `Добавила ${KINDNAME[kind]} на доску. В продукте подключается банк из 5385 задач.`);
+    dropCard(q);
+  }, reduced ? 0 : 450);
+  $('#ask').value = '';
+}
+$('#sendBtn').addEventListener('click', sendAsk);
+$('#ask').addEventListener('keydown', e => { if (e.key === 'Enter') sendAsk(); });
+function dropCard(q){
+  const d = document.createElement('div'); d.className = 'boardcard';
+  d.style.left = (innerWidth / 2 - 170 + (Math.random() * 120 - 60)) + 'px';
+  d.style.top = (240 + Math.random() * 90) + 'px';
+  d.innerHTML = `<span class="tag">${kind === 'task' ? 'Задача · из банка Неумошки'
+      : kind === 'scheme' ? 'Схема · ИИ' : 'Клетка · поле для решения'}</span>
+    <h3>${kind === 'task' ? '№ 2 — Новая задача' : kind === 'scheme' ? 'Схема' : 'Поле для решения'}</h3>
+    <p>${kind === 'grid'
+      ? '<span style="display:block;height:84px;background:linear-gradient(#e7e3d6 1px,transparent 1px) 0 0/12px 12px,linear-gradient(90deg,#e7e3d6 1px,transparent 1px) 0 0/12px 12px;border:1px solid #e3dfd1;border-radius:6px"></span>'
+      : 'Запрос: «' + q + '». Содержимое подставит генератор в продукте.'}</p>
+    <div class="src">мокап</div>`;
+  stage.appendChild(d);
+}
+
+/* ================= тултипы ================= */
+const tip = $('#tip'); let tipT;
+function bindTips(root){
+  root.querySelectorAll('[data-tip]').forEach(el => {
+    if (el._tipBound) return; el._tipBound = true;
     el.addEventListener('mouseenter', () => {
       const r = el.getBoundingClientRect();
       tip.textContent = el.dataset.tip;
       const leftPanel = r.left < 120;
-      tip.style.left = leftPanel ? (r.right + 66 - r.width / 2) + 'px' : (r.left + r.width / 2) + 'px';
+      tip.style.left = leftPanel ? (r.right + 70) + 'px' : (r.left + r.width / 2) + 'px';
       tip.style.top = (leftPanel ? r.top + 6 : r.bottom + 8) + 'px';
       tip.classList.add('show');
     });
     el.addEventListener('mouseleave', () => tip.classList.remove('show'));
   });
-  function flashTip(el, text){
-    const r = el.getBoundingClientRect();
-    tip.textContent = text;
-    tip.style.left = (r.right + 80) + 'px'; tip.style.top = (r.top + 6) + 'px';
-    tip.classList.add('show');
-    clearTimeout(tipT); tipT = setTimeout(() => tip.classList.remove('show'), 1600);
-  }
+}
+bindTips(document);
+function flashTip(el, text){
+  const r = el.getBoundingClientRect();
+  tip.textContent = text;
+  tip.style.left = (r.right + 90) + 'px'; tip.style.top = (r.top + 6) + 'px';
+  tip.classList.add('show');
+  clearTimeout(tipT); tipT = setTimeout(() => tip.classList.remove('show'), 1600);
+}
 
-  /* приглашение */
-  $('#inviteBtn').addEventListener('click', () => {
-    say('ai', 'Система', 'Код класса: <b>ПАРТА-7А2</b> — ученики вводят его на parta.ru/j');
-    chat.classList.add('open');
-    document.querySelector('#chatTabs [data-tab=chat]').click();
+/* ======================================================
+   СИСТЕМА ВИДЖЕТОВ
+====================================================== */
+let zTop = 40;
+function makeWidget(title, x, y){
+  const w = document.createElement('div');
+  w.className = 'widget'; w.style.left = x + 'px'; w.style.top = y + 'px';
+  w.style.zIndex = ++zTop;
+  const head = document.createElement('header');
+  head.innerHTML = `<b>${title}</b>`;
+  const close = document.createElement('button');
+  close.className = 'wbtn'; close.textContent = '×'; close.setAttribute('aria-label', 'Закрыть');
+  close.addEventListener('click', () => w.remove());
+  head.appendChild(close);
+  const body = document.createElement('div'); body.className = 'wbody';
+  w.append(head, body);
+  w.addEventListener('pointerdown', () => { w.style.zIndex = ++zTop; });
+  head.addEventListener('pointerdown', e => {
+    if (e.target === close) return;
+    const sx = e.clientX, sy = e.clientY, ox = w.offsetLeft, oy = w.offsetTop;
+    const move = ev => {
+      w.style.left = ox + (ev.clientX - sx) / zoom + 'px';
+      w.style.top = oy + (ev.clientY - sy) / zoom + 'px';
+    };
+    const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); };
+    addEventListener('pointermove', move); addEventListener('pointerup', up);
+    e.preventDefault();
   });
+  stage.appendChild(w);
+  return body;
+}
+let spawnShift = 0;
+const spawnXY = () => { spawnShift = (spawnShift + 1) % 6;
+  return [innerWidth * .32 + spawnShift * 28, 120 + spawnShift * 26]; };
+
+const el = (tag, attrs = {}, text) => {
+  const n = document.createElement(tag);
+  Object.entries(attrs).forEach(([k, v]) => n.setAttribute(k, v));
+  if (text != null) n.textContent = text;
+  return n;
+};
+const svgEl = (tag, attrs = {}) => {
+  const n = document.createElementNS(SVGNS, tag);
+  Object.entries(attrs).forEach(([k, v]) => n.setAttribute(k, v));
+  return n;
+};
+
+/* ================= ИНСТРУМЕНТЫ ================= */
+const INSTRUMENTS = [];
+const I = (id, subject, name, icon, run) => INSTRUMENTS.push({ id, subject, name, icon, run });
+
+/* ---------- МАТЕМАТИКА ---------- */
+I('plot', 'math', 'График функции',
+  '<path d="M3 20h18M4 20V4"/><path d="M4 16c4 0 4-9 8-9s4 6 8 6"/>',
+  () => {
+    const [x, y] = spawnXY();
+    const b = makeWidget('График функции', x, y);
+    const cv = el('canvas', { width: 340, height: 280, class: 'wcanvas' });
+    const row = el('div', { class: 'row' });
+    const inp = el('input', { type: 'text', value: 'x^2/4 - 2', style: 'flex:1' });
+    const go = el('button', { class: 'mini on' }, 'Построить');
+    row.append(el('label', {}, 'y ='), inp, go);
+    b.append(cv, row, el('div', { class: 'whint' }, 'Можно: x, + − * / ^, sin cos tan sqrt abs ln, pi, e. Несколько функций — через ;'));
+    const ctx = cv.getContext('2d');
+    function compile(src){
+      const safe = src.replace(/\s+/g, '')
+        .replace(/(sin|cos|tan|sqrt|abs|ln|log|exp)/g, 'Math.$1')
+        .replace(/Math\.ln/g, 'Math.log')
+        .replace(/\bpi\b/g, 'Math.PI').replace(/\be\b/g, 'Math.E')
+        .replace(/\^/g, '**');
+      if (/[^0-9x+\-*/().,eEIMathPSqrtbcosinlgxp*]/.test(safe.replace(/Math\.\w+/g, ''))) return null;
+      try { const f = new Function('x', 'return ' + safe + ';'); f(1); return f; }
+      catch { return null; }
+    }
+    function draw(){
+      const W = cv.width, H = cv.height, ux = 24;
+      ctx.clearRect(0, 0, W, H);
+      ctx.strokeStyle = '#eee9dc'; ctx.lineWidth = 1;
+      for (let gx = W/2 % ux; gx < W; gx += ux) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke(); }
+      for (let gy = H/2 % ux; gy < H; gy += ux) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke(); }
+      ctx.strokeStyle = '#8f8878'; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(W/2, 0); ctx.lineTo(W/2, H); ctx.stroke();
+      ctx.fillStyle = '#8f8878'; ctx.font = '10px sans-serif';
+      ctx.fillText('1', W/2 + ux - 3, H/2 + 12); ctx.fillText('1', W/2 + 5, H/2 - ux + 4);
+      const colors = ['#1e6f5c', '#2456a8', '#c9403a'];
+      inp.value.split(';').forEach((src, fi) => {
+        const f = compile(src); if (!f) return;
+        ctx.strokeStyle = colors[fi % 3]; ctx.lineWidth = 2.2; ctx.beginPath();
+        let pen = false;
+        for (let px = 0; px <= W; px++) {
+          const xv = (px - W/2) / ux, yv = f(xv);
+          if (!isFinite(yv)) { pen = false; continue; }
+          const py = H/2 - yv * ux;
+          if (py < -2000 || py > 2000) { pen = false; continue; }
+          pen ? ctx.lineTo(px, py) : ctx.moveTo(px, py); pen = true;
+        }
+        ctx.stroke();
+      });
+    }
+    go.addEventListener('click', draw);
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') draw(); });
+    draw();
+  });
+
+I('numline', 'math', 'Числовая прямая',
+  '<path d="M3 12h18m-2-3 3 3-3 3"/><circle cx="8" cy="12" r="1.6" fill="currentColor"/><circle cx="14" cy="12" r="1.6"/>',
+  () => {
+    const [x, y] = spawnXY();
+    const b = makeWidget('Числовая прямая', x, y);
+    const svg = svgEl('svg', { width: 360, height: 86, viewBox: '0 0 360 86' });
+    const row = el('div', { class: 'row' });
+    const inp = el('input', { type: 'text', value: '-2); [1; 4', style: 'flex:1' });
+    const go = el('button', { class: 'mini on' }, 'Показать');
+    row.append(el('label', {}, 'Точки:'), inp, go);
+    b.append(svg, row, el('div', { class: 'whint' }, '[a — закрашенная точка, (a — выколотая; [a; b — интервал со штриховкой'));
+    const X = v => 180 + v * 28;
+    function draw(){
+      svg.innerHTML = '';
+      const ax = svgEl('g');
+      ax.appendChild(svgEl('line', { x1: 8, y1: 46, x2: 352, y2: 46, stroke: '#0f1115', 'stroke-width': 1.6 }));
+      ax.appendChild(svgEl('path', { d: 'M352 46l-8-4v8z', fill: '#0f1115' }));
+      for (let v = -6; v <= 5; v++) {
+        ax.appendChild(svgEl('line', { x1: X(v), y1: 42, x2: X(v), y2: 50, stroke: '#0f1115' }));
+        const t = svgEl('text', { x: X(v), y: 66, 'text-anchor': 'middle', 'font-size': 11, fill: '#6f6a5e' });
+        t.textContent = v; ax.appendChild(t);
+      }
+      svg.appendChild(ax);
+      const items = inp.value.split(/[,;]\s*(?=[\[(])|\)\s*[,;]?\s*/).join(';').split(';').map(s => s.trim()).filter(Boolean);
+      // проще: парсим токены вида [n или (n попарно
+      const tok = inp.value.match(/[\[(]\s*-?\d+(?:\.\d+)?/g) || [];
+      const vals = tok.map(t => ({ open: t[0] === '(', v: parseFloat(t.slice(1)) }));
+      for (let i = 0; i + 1 < vals.length; i += 2) {
+        const a = vals[i], c = vals[i+1];
+        svg.appendChild(svgEl('rect', { x: Math.min(X(a.v), X(c.v)), y: 30, width: Math.abs(X(c.v) - X(a.v)),
+          height: 16, fill: 'rgba(30,111,92,.18)' }));
+      }
+      vals.forEach(p => {
+        svg.appendChild(svgEl('circle', { cx: X(p.v), cy: 46, r: 5,
+          fill: p.open ? '#fbfaf6' : '#1e6f5c', stroke: '#1e6f5c', 'stroke-width': 2 }));
+      });
+    }
+    go.addEventListener('click', draw);
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') draw(); });
+    draw();
+  });
+
+I('fraction', 'math', 'Дроби наглядно',
+  '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5V12l6 6"/>',
+  () => {
+    const [x, y] = spawnXY();
+    const b = makeWidget('Дроби наглядно', x, y);
+    const svg = svgEl('svg', { width: 200, height: 170, viewBox: '0 0 200 170' });
+    const row = el('div', { class: 'row' });
+    const num = el('input', { type: 'number', value: 3, min: 0, max: 24, style: 'width:56px' });
+    const den = el('input', { type: 'number', value: 8, min: 1, max: 24, style: 'width:56px' });
+    row.append(el('label', {}, 'Закрашено'), num, el('label', {}, 'из'), den);
+    b.append(svg, row);
+    function draw(){
+      svg.innerHTML = '';
+      const n = Math.max(0, +num.value), d = Math.max(1, +den.value);
+      const cx = 100, cy = 78, r = 62;
+      for (let i = 0; i < d; i++) {
+        const a1 = -Math.PI/2 + i * 2 * Math.PI / d, a2 = a1 + 2 * Math.PI / d;
+        const large = (a2 - a1) > Math.PI ? 1 : 0;
+        const p = svgEl('path', {
+          d: `M${cx},${cy} L${cx + r * Math.cos(a1)},${cy + r * Math.sin(a1)}
+              A${r},${r} 0 ${large} 1 ${cx + r * Math.cos(a2)},${cy + r * Math.sin(a2)} Z`,
+          fill: i < Math.min(n, d) ? 'rgba(30,111,92,.55)' : '#f4f1e8',
+          stroke: '#1e6f5c', 'stroke-width': 1.5 });
+        svg.appendChild(p);
+      }
+      const t = svgEl('text', { x: 100, y: 162, 'text-anchor': 'middle', 'font-size': 15, 'font-weight': 700, fill: '#134639' });
+      t.textContent = `${n}/${d}` + (n > d ? ` = ${Math.floor(n/d)} ${n % d ? (n%d)+'/'+d : ''}`.trimEnd() : '');
+      svg.appendChild(t);
+    }
+    num.addEventListener('input', draw); den.addEventListener('input', draw);
+    draw();
+  });
+
+I('trig', 'math', 'Тригонометрический круг',
+  '<circle cx="12" cy="12" r="8.5"/><path d="M12 12l7-4M12 12h8.5M19 8v4" stroke-dasharray="0"/>',
+  () => {
+    const [x, y] = spawnXY();
+    const b = makeWidget('Тригонометрический круг', x, y);
+    const S = 250, C = S/2, R = 96;
+    const svg = svgEl('svg', { width: S, height: S, viewBox: `0 0 ${S} ${S}`, style: 'touch-action:none; cursor:pointer' });
+    const info = el('div', { class: 'row', style: 'justify-content:space-between; font-variant-numeric:tabular-nums' });
+    const aOut = el('b'), sOut = el('span'), cOut = el('span');
+    info.append(aOut, sOut, cOut);
+    b.append(svg, info, el('div', { class: 'whint' }, 'Тяните точку по кругу'));
+    let ang = Math.PI / 6;
+    function draw(){
+      svg.innerHTML = '';
+      svg.appendChild(svgEl('line', { x1: 8, y1: C, x2: S-8, y2: C, stroke: '#c9c2b1' }));
+      svg.appendChild(svgEl('line', { x1: C, y1: 8, x2: C, y2: S-8, stroke: '#c9c2b1' }));
+      svg.appendChild(svgEl('circle', { cx: C, cy: C, r: R, fill: 'none', stroke: '#0f1115', 'stroke-width': 1.8 }));
+      const px = C + R * Math.cos(ang), py = C - R * Math.sin(ang);
+      const deg = ((ang * 180 / Math.PI) % 360 + 360) % 360;
+      svg.appendChild(svgEl('path', {
+        d: `M${C + 26},${C} A26,26 0 ${deg > 180 ? 1 : 0} 0 ${C + 26 * Math.cos(ang)},${C - 26 * Math.sin(ang)}`,
+        fill: 'none', stroke: '#b07d1e', 'stroke-width': 2 }));
+      svg.appendChild(svgEl('line', { x1: px, y1: py, x2: px, y2: C, stroke: '#c9403a', 'stroke-width': 2, 'stroke-dasharray': '4 3' }));
+      svg.appendChild(svgEl('line', { x1: px, y1: py, x2: C, y2: py, stroke: '#2456a8', 'stroke-width': 2, 'stroke-dasharray': '4 3' }));
+      svg.appendChild(svgEl('line', { x1: C, y1: C, x2: px, y2: py, stroke: '#1e6f5c', 'stroke-width': 2.4 }));
+      svg.appendChild(svgEl('circle', { cx: px, cy: py, r: 7, fill: '#1e6f5c' }));
+      aOut.textContent = `α = ${Math.round(deg)}° ≈ ${(deg * Math.PI / 180).toFixed(2)} рад`;
+      sOut.textContent = `sin = ${Math.sin(ang).toFixed(2)}`;
+      cOut.textContent = `cos = ${Math.cos(ang).toFixed(2)}`;
+      sOut.style.color = '#c9403a'; cOut.style.color = '#2456a8';
+    }
+    let dragging = false;
+    const setFromEvent = e => {
+      const r = svg.getBoundingClientRect();
+      const mx = (e.clientX - r.left) * (S / r.width) - C;
+      const my = C - (e.clientY - r.top) * (S / r.height);
+      ang = Math.atan2(my, mx); draw();
+    };
+    svg.addEventListener('pointerdown', e => { dragging = true; svg.setPointerCapture(e.pointerId); setFromEvent(e); });
+    svg.addEventListener('pointermove', e => dragging && setFromEvent(e));
+    svg.addEventListener('pointerup', () => dragging = false);
+    draw();
+  });
+
+/* ---------- ГЕОМЕТРИЯ ---------- */
+I('triangle', 'geom', 'Треугольник ABC',
+  '<path d="M12 4 3.5 19h17z"/>',
+  () => {
+    const [x, y] = spawnXY();
+    const b = makeWidget('Треугольник ABC', x, y);
+    const S = 300;
+    const svg = svgEl('svg', { width: S, height: 240, viewBox: `0 0 ${S} 240`, style: 'touch-action:none' });
+    const out = el('div', { class: 'whint' });
+    b.append(svg, out, el('div', { class: 'whint' }, 'Тяните вершины · длины в клетках (24 px)'));
+    const P = [{ x: 60, y: 200, n: 'A' }, { x: 250, y: 200, n: 'B' }, { x: 120, y: 40, n: 'C' }];
+    function draw(){
+      svg.innerHTML = '';
+      svg.appendChild(svgEl('polygon', { points: P.map(p => p.x + ',' + p.y).join(' '),
+        fill: 'rgba(30,111,92,.10)', stroke: '#1e6f5c', 'stroke-width': 2.2, 'stroke-linejoin': 'round' }));
+      P.forEach((p, i) => {
+        const c = svgEl('circle', { cx: p.x, cy: p.y, r: 8, fill: '#fff', stroke: '#1e6f5c', 'stroke-width': 2.4, style: 'cursor:grab' });
+        c.addEventListener('pointerdown', e => {
+          c.setPointerCapture(e.pointerId);
+          const move = ev => {
+            const r = svg.getBoundingClientRect();
+            p.x = Math.max(10, Math.min(S - 10, (ev.clientX - r.left) * (S / r.width)));
+            p.y = Math.max(10, Math.min(230, (ev.clientY - r.top) * (240 / r.height)));
+            draw();
+          };
+          const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); };
+          addEventListener('pointermove', move); addEventListener('pointerup', up);
+        });
+        svg.appendChild(c);
+        const t = svgEl('text', { x: p.x + (p.n === 'C' ? 0 : p.n === 'A' ? -16 : 16), y: p.y + (p.n === 'C' ? -14 : 5),
+          'font-size': 15, 'font-weight': 700, fill: '#0f1115', 'text-anchor': 'middle' });
+        t.textContent = p.n; svg.appendChild(t);
+      });
+      const d = (a, c) => Math.hypot(a.x - c.x, a.y - c.y) / 24;
+      out.textContent = `AB = ${d(P[0],P[1]).toFixed(1)} · BC = ${d(P[1],P[2]).toFixed(1)} · AC = ${d(P[0],P[2]).toFixed(1)}`;
+    }
+    draw();
+  });
+
+I('circle', 'geom', 'Окружность',
+  '<circle cx="12" cy="12" r="8"/><path d="M12 12h8"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/>',
+  () => {
+    const [x, y] = spawnXY();
+    const b = makeWidget('Окружность', x, y);
+    const S = 260;
+    const svg = svgEl('svg', { width: S, height: S, viewBox: `0 0 ${S} ${S}`, style: 'touch-action:none' });
+    const out = el('div', { class: 'whint' });
+    b.append(svg, out);
+    let R = 84;
+    function draw(){
+      svg.innerHTML = '';
+      svg.appendChild(svgEl('circle', { cx: S/2, cy: S/2, r: R, fill: 'rgba(36,86,168,.07)', stroke: '#2456a8', 'stroke-width': 2.2 }));
+      svg.appendChild(svgEl('circle', { cx: S/2, cy: S/2, r: 3, fill: '#0f1115' }));
+      const t = svgEl('text', { x: S/2 - 10, y: S/2 - 8, 'font-size': 14, 'font-weight': 700 }); t.textContent = 'O';
+      svg.appendChild(t);
+      svg.appendChild(svgEl('line', { x1: S/2, y1: S/2, x2: S/2 + R, y2: S/2, stroke: '#0f1115', 'stroke-width': 1.8 }));
+      const h = svgEl('circle', { cx: S/2 + R, cy: S/2, r: 8, fill: '#fff', stroke: '#2456a8', 'stroke-width': 2.4, style: 'cursor:ew-resize' });
+      h.addEventListener('pointerdown', e => {
+        h.setPointerCapture(e.pointerId);
+        const move = ev => {
+          const r = svg.getBoundingClientRect();
+          R = Math.max(20, Math.min(120, (ev.clientX - r.left) * (S / r.width) - S/2));
+          draw();
+        };
+        const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); };
+        addEventListener('pointermove', move); addEventListener('pointerup', up);
+      });
+      svg.appendChild(h);
+      const rc = R / 24;
+      out.textContent = `R = ${rc.toFixed(1)} кл · C = 2πR ≈ ${(2 * Math.PI * rc).toFixed(1)} · S = πR² ≈ ${(Math.PI * rc * rc).toFixed(1)}`;
+    }
+    draw();
+  });
+
+I('protractor', 'geom', 'Транспортир',
+  '<path d="M4 16a8 8 0 0 1 16 0z"/><path d="M12 16V8m4.9 8-1.2-3M7.1 16l1.2-3"/>',
+  () => {
+    const [x, y] = spawnXY();
+    const b = makeWidget('Транспортир', x, y);
+    const svg = svgEl('svg', { width: 320, height: 180, viewBox: '0 0 320 180' });
+    const row = el('div', { class: 'row' });
+    let rot = 0;
+    const l = el('button', { class: 'mini' }, '⟲ −15°'), r = el('button', { class: 'mini' }, '⟳ +15°');
+    const lab = el('span', { class: 'mini', style: 'background:none' }, '0°');
+    row.append(l, lab, r);
+    b.append(svg, row);
+    function draw(){
+      svg.innerHTML = '';
+      const g = svgEl('g', { transform: `rotate(${rot} 160 150)` });
+      g.appendChild(svgEl('path', { d: 'M30 150a130 130 0 0 1 260 0z',
+        fill: 'rgba(255,255,255,.75)', stroke: '#0f1115', 'stroke-width': 1.6 }));
+      for (let a = 0; a <= 180; a += 10) {
+        const rad = Math.PI * a / 180, r1 = a % 30 ? 118 : 110;
+        g.appendChild(svgEl('line', {
+          x1: 160 - r1 * Math.cos(rad), y1: 150 - r1 * Math.sin(rad),
+          x2: 160 - 130 * Math.cos(rad), y2: 150 - 130 * Math.sin(rad),
+          stroke: '#0f1115', 'stroke-width': a % 30 ? 1 : 1.6 }));
+        if (a % 30 === 0) {
+          const t = svgEl('text', { x: 160 - 96 * Math.cos(rad), y: 154 - 96 * Math.sin(rad),
+            'font-size': 11, 'text-anchor': 'middle', fill: '#6f6a5e' });
+          t.textContent = a; g.appendChild(t);
+        }
+      }
+      g.appendChild(svgEl('line', { x1: 30, y1: 150, x2: 290, y2: 150, stroke: '#0f1115', 'stroke-width': 1.6 }));
+      g.appendChild(svgEl('circle', { cx: 160, cy: 150, r: 3, fill: '#c9403a' }));
+      svg.appendChild(g);
+      lab.textContent = rot + '°';
+    }
+    l.addEventListener('click', () => { rot -= 15; draw(); });
+    r.addEventListener('click', () => { rot += 15; draw(); });
+    draw();
+  });
+
+I('ruler', 'geom', 'Линейка',
+  '<rect x="3" y="9" width="18" height="6" rx="1"/><path d="M7 9v3m4-3v3m4-3v3"/>',
+  () => {
+    const [x, y] = spawnXY();
+    const b = makeWidget('Линейка · 10 см', x, y);
+    const svg = svgEl('svg', { width: 340, height: 64, viewBox: '0 0 340 64' });
+    b.append(svg, el('div', { class: 'whint' }, '1 см = 1 большая клетка (24 px). Двигайте виджет за шапку.'));
+    svg.appendChild(svgEl('rect', { x: 8, y: 10, width: 324, height: 44, rx: 5,
+      fill: 'rgba(255,236,178,.8)', stroke: '#b07d1e', 'stroke-width': 1.4 }));
+    for (let mm = 0; mm <= 100; mm += 2) {
+      const px = 14 + mm * 3.12, h = mm % 10 ? (mm % 10 === 5 ? 12 : 7) : 17;
+      svg.appendChild(svgEl('line', { x1: px, y1: 10, x2: px, y2: 10 + h, stroke: '#0f1115',
+        'stroke-width': mm % 10 ? .8 : 1.3 }));
+      if (mm % 10 === 0) {
+        const t = svgEl('text', { x: px, y: 42, 'font-size': 11, 'text-anchor': 'middle', fill: '#0f1115' });
+        t.textContent = mm / 10; svg.appendChild(t);
+      }
+    }
+  });
+
+/* ---------- ИНФОРМАТИКА ---------- */
+I('code', 'inf', 'Код Python',
+  '<path d="m8 8-4 4 4 4m8-8 4 4-4 4M13.5 5l-3 14"/>',
+  () => {
+    const [x, y] = spawnXY();
+    const b = makeWidget('Код · Python', x, y);
+    const box = el('div', { class: 'codebox', contenteditable: 'true', spellcheck: 'false' });
+    const demo = `def count(a, b):\n    # задание 23\n    if a == b:\n        return 1\n    if a > b:\n        return 0\n    return count(a+1, b) + count(a*2, b)\n\nprint(count(2, 20))`;
+    const paint = src => box.innerHTML = src
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/(#.*)$/gm, '<span class="cm">$1</span>')
+      .replace(/\b(def|return|if|else|elif|for|in|while|print|and|or|not|range)\b/g, '<span class="kw">$1</span>')
+      .replace(/\b(\d+)\b/g, '<span class="nu">$1</span>');
+    paint(demo);
+    box.addEventListener('blur', () => paint(box.textContent));
+    b.append(box, el('div', { class: 'whint' }, 'Редактируется; подсветка — при клике вне поля. В продукте: запуск в песочнице.'));
+  });
+
+I('bases', 'inf', 'Системы счисления',
+  '<path d="M4 7h7M4 12h7M4 17h7"/><path d="M15 7h5M15 12h5M15 17h5" stroke-dasharray="1.5 2.5"/>',
+  () => {
+    const [x, y] = spawnXY();
+    const b = makeWidget('Системы счисления', x, y);
+    const inp = el('input', { type: 'text', value: '156', style: 'width:110px; font-variant-numeric:tabular-nums' });
+    const from = el('select'); const rows = el('div');
+    [2, 8, 10, 16].forEach(v => from.appendChild(el('option', { value: v }, 'из ' + v)));
+    from.value = '10';
+    const r1 = el('div', { class: 'row' }); r1.append(inp, from);
+    b.append(r1, rows);
+    function calc(){
+      rows.innerHTML = '';
+      const n = parseInt(inp.value.trim(), +from.value);
+      [2, 8, 10, 16].forEach(base => {
+        const row = el('div', { class: 'row', style: 'justify-content:space-between; font-variant-numeric:tabular-nums' });
+        row.append(el('label', {}, base + ':'),
+          el('b', { style: 'font-size:15px' }, isNaN(n) ? '—' : n.toString(base).toUpperCase() + '₍' + base + '₎'));
+        rows.appendChild(row);
+      });
+    }
+    inp.addEventListener('input', calc); from.addEventListener('change', calc);
+    calc();
+  });
+
+I('tree', 'inf', 'Дерево (клик — ветвить)',
+  '<circle cx="12" cy="5" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M10.8 7 7 15.7M13.2 7 17 15.7"/>',
+  () => {
+    const [x, y] = spawnXY();
+    const b = makeWidget('Дерево', x, y);
+    const W = 340, H = 240;
+    const svg = svgEl('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
+    b.append(svg, el('div', { class: 'whint' }, 'Клик по узлу — добавить 2 потомка (дерево Фано / позиции игры)'));
+    let root = { label: '2', children: [] };
+    function layout(){
+      const levels = [];
+      (function walk(n, d){ (levels[d] = levels[d] || []).push(n); n.children.forEach(c => walk(c, d + 1)); })(root, 0);
+      levels.forEach((ns, d) => ns.forEach((n, i) => {
+        n.px = W * (i + 1) / (ns.length + 1); n.py = 28 + d * 54;
+      }));
+    }
+    function draw(){
+      layout(); svg.innerHTML = '';
+      (function lines(n){ n.children.forEach(c => {
+        svg.appendChild(svgEl('line', { x1: n.px, y1: n.py, x2: c.px, y2: c.py, stroke: '#8f8878', 'stroke-width': 1.6 }));
+        lines(c); }); })(root);
+      (function nodes(n){
+        const g = svgEl('g', { style: 'cursor:pointer' });
+        g.appendChild(svgEl('circle', { cx: n.px, cy: n.py, r: 15, fill: n.children.length ? '#fff' : '#e6f0ec',
+          stroke: '#1e6f5c', 'stroke-width': 2 }));
+        const t = svgEl('text', { x: n.px, y: n.py + 4, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 700 });
+        t.textContent = n.label; g.appendChild(t);
+        g.addEventListener('click', () => {
+          if (n.py > H - 60) return;
+          if (!n.children.length) {
+            const v = parseInt(n.label);
+            n.children = isNaN(v) ? [{ label: '?', children: [] }, { label: '?', children: [] }]
+              : [{ label: String(v + 1), children: [] }, { label: String(v * 2), children: [] }];
+            draw();
+          }
+        });
+        svg.appendChild(g); n.children.forEach(nodes);
+      })(root);
+    }
+    draw();
+  });
+
+I('truth', 'inf', 'Таблица истинности',
+  '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9.5h16M4 15h16M12 4v16"/>',
+  () => {
+    const [x, y] = spawnXY();
+    const b = makeWidget('Таблица истинности', x, y);
+    const inp = el('input', { type: 'text', value: '(A or B) and not C', style: 'width:210px' });
+    const go = el('button', { class: 'mini on' }, 'Построить');
+    const r1 = el('div', { class: 'row' }); r1.append(el('label', {}, 'F ='), inp, go);
+    const holder = el('div', { class: 'row' });
+    b.append(r1, holder, el('div', { class: 'whint' }, 'Переменные A, B, C; операции: and, or, not, xor, ->'));
+    function build(){
+      holder.innerHTML = '';
+      let src = inp.value.toLowerCase()
+        .replace(/->/g, '<=').replace(/xor/g, '!=')
+        .replace(/\band\b/g, '&&').replace(/\bor\b/g, '||').replace(/\bnot\b/g, '!');
+      const vars = [...new Set((inp.value.toUpperCase().match(/[ABC]/g) || []))].sort();
+      if (!vars.length) { holder.textContent = 'Нет переменных A/B/C'; return; }
+      let f;
+      try { f = new Function(...vars.map(v => v.toLowerCase()), 'return (' + src.replace(/[ABC]/g, m => m.toLowerCase()) + ') ? 1 : 0;'); f(...vars.map(() => 0)); }
+      catch { holder.textContent = 'Не разобрала выражение'; return; }
+      const tbl = el('table', { class: 'truth' });
+      const hr = el('tr'); vars.forEach(v => hr.appendChild(el('th', {}, v))); hr.appendChild(el('th', {}, 'F'));
+      tbl.appendChild(hr);
+      for (let i = 0; i < (1 << vars.length); i++) {
+        const bits = vars.map((_, j) => (i >> (vars.length - 1 - j)) & 1);
+        const tr = el('tr'); bits.forEach(bit => tr.appendChild(el('td', {}, bit)));
+        tr.appendChild(el('td', { class: 'res' }, f(...bits)));
+        tbl.appendChild(tr);
+      }
+      holder.appendChild(tbl);
+    }
+    go.addEventListener('click', build);
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') build(); });
+    build();
+  });
+
+/* ---------- ВЕРОЯТНОСТЬ И СТАТИСТИКА ---------- */
+I('dice', 'prob', 'Кубик и монета',
+  '<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.3" fill="currentColor"/><circle cx="15" cy="15" r="1.3" fill="currentColor"/><circle cx="15" cy="9" r="1.3" fill="currentColor"/><circle cx="9" cy="15" r="1.3" fill="currentColor"/>',
+  () => {
+    const [x, y] = spawnXY();
+    const b = makeWidget('Кубик и монета', x, y);
+    const face = el('div', { class: 'bigval', style: 'font-size:42px; text-align:center; min-height:56px' }, '🎲');
+    const hist = el('div', { class: 'whint' }, 'История: —');
+    const row = el('div', { class: 'row', style: 'justify-content:center' });
+    const dice = el('button', { class: 'mini on' }, 'Бросить кубик');
+    const coin = el('button', { class: 'mini' }, 'Монета');
+    row.append(dice, coin);
+    const log = [];
+    const show = v => { face.textContent = v; log.push(v);
+      hist.textContent = 'История: ' + log.slice(-12).join(' '); };
+    dice.addEventListener('click', () => {
+      let n = 0; const spin = setInterval(() => {
+        face.textContent = '⚀⚁⚂⚃⚄⚅'[Math.floor(Math.random() * 6)];
+        if (++n > (reduced ? 0 : 7)) { clearInterval(spin);
+          show('⚀⚁⚂⚃⚄⚅'[Math.floor(Math.random() * 6)]); }
+      }, 70);
+    });
+    coin.addEventListener('click', () => show(Math.random() < .5 ? 'О' : 'Р'));
+    b.append(face, row, hist);
+  });
+
+I('chart', 'prob', 'Диаграмма',
+  '<path d="M4 20h16M6 20v-6m4 6V8m4 12v-9m4 9V5"/>',
+  () => {
+    const [x, y] = spawnXY();
+    const b = makeWidget('Столбчатая диаграмма', x, y);
+    const svg = svgEl('svg', { width: 320, height: 190, viewBox: '0 0 320 190' });
+    const inp = el('input', { type: 'text', value: '5, 3, 8, 2, 6', style: 'flex:1' });
+    const go = el('button', { class: 'mini on' }, 'Построить');
+    const r1 = el('div', { class: 'row' }); r1.append(el('label', {}, 'Данные:'), inp, go);
+    b.append(svg, r1);
+    function draw(){
+      svg.innerHTML = '';
+      const vals = inp.value.split(/[,;\s]+/).map(Number).filter(v => isFinite(v)).slice(0, 12);
+      if (!vals.length) return;
+      const mx = Math.max(...vals, 1), bw = Math.min(46, 300 / vals.length - 8);
+      svg.appendChild(svgEl('line', { x1: 10, y1: 168, x2: 310, y2: 168, stroke: '#0f1115', 'stroke-width': 1.4 }));
+      vals.forEach((v, i) => {
+        const h = 140 * v / mx, bx = 18 + i * (300 / vals.length);
+        svg.appendChild(svgEl('rect', { x: bx, y: 168 - h, width: bw, height: h, rx: 3,
+          fill: i % 2 ? 'rgba(36,86,168,.65)' : 'rgba(30,111,92,.65)' }));
+        const t = svgEl('text', { x: bx + bw/2, y: 160 - h, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700 });
+        t.textContent = v; svg.appendChild(t);
+      });
+    }
+    go.addEventListener('click', draw);
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') draw(); });
+    draw();
+  });
+
+/* ---------- УРОК ---------- */
+I('timer', 'lesson', 'Таймер',
+  '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2.5h6"/>',
+  () => {
+    const [x, y] = spawnXY();
+    const b = makeWidget('Таймер', x, y);
+    const disp = el('div', { class: 'bigval', style: 'font-size:40px; text-align:center' }, '15:00');
+    const row = el('div', { class: 'row', style: 'justify-content:center' });
+    let total = 15 * 60, left = total, tick = null;
+    const render = () => {
+      disp.textContent = `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`;
+      disp.style.color = left === 0 ? 'var(--red)' : left <= 60 ? 'var(--amber)' : 'var(--ink)';
+    };
+    [5, 10, 15].forEach(m => {
+      const p = el('button', { class: 'mini' }, m + ' мин');
+      p.addEventListener('click', () => { total = left = m * 60; render(); });
+      row.appendChild(p);
+    });
+    const row2 = el('div', { class: 'row', style: 'justify-content:center' });
+    const start = el('button', { class: 'mini on' }, 'Старт');
+    const reset = el('button', { class: 'mini' }, 'Сброс');
+    start.addEventListener('click', () => {
+      if (tick) { clearInterval(tick); tick = null; start.textContent = 'Старт'; return; }
+      start.textContent = 'Пауза';
+      tick = setInterval(() => { if (left > 0) { left--; render(); }
+        else { clearInterval(tick); tick = null; start.textContent = 'Старт'; } }, 1000);
+    });
+    reset.addEventListener('click', () => { left = total; render(); });
+    row2.append(start, reset);
+    b.append(disp, row, row2);
+    render();
+  });
+
+I('picker', 'lesson', 'Случайный ученик',
+  '<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/><path d="M17.5 3.5 19 5m0-1.5L17.5 5" stroke-width="1.4"/>',
+  () => {
+    const [x, y] = spawnXY();
+    const b = makeWidget('Случайный ученик · 7А', x, y);
+    const NAMES = ['Алиса В.', 'Богдан К.', 'Вера С.', 'Глеб Н.', 'Дина М.', 'Егор П.',
+      'Ждан Т.', 'Зоя Л.', 'Иван Р.', 'Кира Ф.', 'Лев Д.', 'Мия Ш.'];
+    const disp = el('div', { class: 'bigval', style: 'font-size:24px; text-align:center; min-height:34px' }, '—');
+    const go = el('button', { class: 'mini on', style: 'margin:8px auto 0; display:block' }, 'Выбрать');
+    b.append(disp, go, el('div', { class: 'whint', style: 'text-align:center' }, '12 учеников · без повторов до полного круга'));
+    let bag = [];
+    go.addEventListener('click', () => {
+      if (!bag.length) bag = [...NAMES].sort(() => Math.random() - .5);
+      const target = bag.pop();
+      if (reduced) { disp.textContent = target; return; }
+      let n = 0;
+      const spin = setInterval(() => {
+        disp.textContent = NAMES[Math.floor(Math.random() * NAMES.length)];
+        if (++n > 11) { clearInterval(spin); disp.textContent = target; disp.style.color = 'var(--accent-ink)'; }
+      }, 65);
+    });
+  });
+
+I('light', 'lesson', 'Светофор тишины',
+  '<rect x="8" y="3" width="8" height="18" rx="4"/><circle cx="12" cy="7.5" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="16.5" r="1.6"/>',
+  () => {
+    const [x, y] = spawnXY();
+    const b = makeWidget('Светофор тишины', x, y);
+    const wrap = el('div', { id: 'light' });
+    const states = [
+      { c: '#c9403a', t: 'Тишина — работаем сами' },
+      { c: '#b07d1e', t: 'Шёпотом — с соседом' },
+      { c: '#1e6f5c', t: 'Обсуждаем всем классом' }];
+    const label = el('div', { class: 'whint', style: 'text-align:center' }, states[0].t);
+    states.forEach((s, i) => {
+      const btn = el('button', { style: 'color:' + s.c + '; background:' + s.c });
+      if (i === 0) btn.classList.add('on');
+      btn.addEventListener('click', () => {
+        wrap.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+        btn.classList.add('on'); label.textContent = s.t;
+      });
+      wrap.appendChild(btn);
+    });
+    b.append(wrap, label);
+  });
+
+/* ================= панель предметов ================= */
+const SUBJECTS = [
+  { id: 'math', name: 'Математика' },
+  { id: 'geom', name: 'Геометрия' },
+  { id: 'inf', name: 'Информатика' },
+  { id: 'prob', name: 'Вер/стат' },
+  { id: 'lesson', name: 'Урок' }];
+let subject = 'math';
+const drawer = $('#drawer'), tabs = $('#drawerTabs'), grid = $('#drawerGrid');
+SUBJECTS.forEach(s => {
+  const t = el('button', { role: 'tab' }, s.name);
+  if (s.id === subject) t.classList.add('cur');
+  t.addEventListener('click', () => {
+    subject = s.id;
+    tabs.querySelectorAll('button').forEach(x => x.classList.toggle('cur', x === t));
+    renderGrid();
+  });
+  tabs.appendChild(t);
+});
+function renderGrid(){
+  grid.innerHTML = '';
+  INSTRUMENTS.filter(i => i.subject === subject).forEach(i => {
+    const btn = el('button', { class: 'instr' });
+    btn.innerHTML = `<svg viewBox="0 0 24 24">${i.icon}</svg>${i.name}`;
+    btn.addEventListener('click', () => { try { i.run(); } catch (err) { console.error(i.id, err); } });
+    grid.appendChild(btn);
+  });
+}
+renderGrid();
+$('#drawerBtn').addEventListener('click', () => {
+  const open = drawer.classList.toggle('open');
+  $('#drawerBtn').setAttribute('aria-expanded', open);
+  $('#drawerBtn').classList.toggle('active', open);
+  penFly.classList.remove('open');
+});
+
+/* фоны */
+document.querySelectorAll('.bgbtn').forEach(bb => bb.addEventListener('click', () => {
+  document.querySelectorAll('.bgbtn').forEach(x => x.classList.remove('sel'));
+  bb.classList.add('sel');
+  stage.classList.remove('bg-cell', 'bg-line', 'bg-plane', 'bg-plain');
+  stage.classList.add(bb.dataset.bg);
+}));
+
+/* стартовая подсказка */
+setTimeout(() => {
+  say('ai', 'Неумошка ИИ', 'Это концепт v2: откройте <b>сундучок</b> в левой панели — там предметные инструменты: график функции, тригокруг, треугольник, дерево, таблица истинности, таймер и другие.');
+  chat.classList.add('open');
+}, reduced ? 0 : 800);
 })();
 </script>
