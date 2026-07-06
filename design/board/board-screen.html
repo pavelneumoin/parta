@@ -1,0 +1,554 @@
+<title>Парта — Доска (концепт)</title>
+<style>
+  :root{
+    --paper:#fbfaf6; --panel:#ffffff; --chalk:#f4f1e8;
+    --ink:#0f1115; --muted:#6f6a5e; --rule:#e3dfd1; --cell:#e7e3d6;
+    --accent:#1e6f5c; --accent-soft:#e6f0ec; --accent-ink:#134639;
+    --red:#c9403a; --amber:#b07d1e; --laser:#e2483d;
+    --shadow:0 2px 10px rgba(15,17,21,.08), 0 0 0 1px var(--rule);
+    --radius:14px;
+  }
+  html,body{height:100%;}
+  body{margin:0; font:13px/1.45 -apple-system,"Segoe UI",system-ui,Roboto,sans-serif;
+       color:var(--ink); background:var(--paper); overflow:hidden;
+       -webkit-user-select:none; user-select:none;}
+  button{font:inherit; color:inherit; background:none; border:0; cursor:pointer;}
+  button:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:8px;}
+
+  /* ===== сцена ===== */
+  #viewport{position:fixed; inset:0; overflow:hidden;}
+  #stage{position:absolute; inset:0; transform-origin:50% 50%;
+    background:
+      linear-gradient(var(--cell) 1px, transparent 1px) 0 0/24px 24px,
+      linear-gradient(90deg, var(--cell) 1px, transparent 1px) 0 0/24px 24px,
+      var(--paper);}
+  #inkLayer,#liveLayer{position:absolute; inset:0; width:100%; height:100%; touch-action:none;}
+  #liveLayer{pointer-events:none;}
+  #stage.tool-pen,#stage.tool-marker{cursor:crosshair;}
+  #stage.tool-eraser{cursor:cell;}
+  #stage.tool-laser{cursor:none;}
+  #stage.tool-stamp{cursor:copy;}
+
+  /* контент-карточки на доске */
+  .boardcard{position:absolute; width:340px; background:var(--panel);
+    border-radius:12px; box-shadow:var(--shadow); padding:14px 16px 12px;}
+  .boardcard .tag{display:inline-block; font-size:10px; font-weight:700;
+    letter-spacing:.07em; text-transform:uppercase; color:var(--accent-ink);
+    background:var(--accent-soft); border-radius:5px; padding:2px 7px; margin-bottom:8px;}
+  .boardcard h3{margin:0 0 6px; font-size:14px;}
+  .boardcard p{margin:0; font-size:13.5px; line-height:1.5; -webkit-user-select:text; user-select:text;}
+  .boardcard .src{margin-top:9px; font-size:11px; color:var(--muted);}
+  .stampmark{position:absolute; width:34px; height:34px; pointer-events:none;}
+
+  /* ===== плавающие панели ===== */
+  .panel{position:fixed; background:var(--panel); border-radius:var(--radius);
+    box-shadow:var(--shadow); display:flex; align-items:center; gap:2px; padding:6px;}
+  .iconbtn{display:grid; place-items:center; width:36px; height:36px; border-radius:10px;
+    color:var(--ink); position:relative;}
+  .iconbtn:hover{background:var(--chalk);}
+  .iconbtn.active{background:var(--accent); color:#fff;}
+  .iconbtn.danger:hover{background:#f7e6e5; color:var(--red);}
+  .iconbtn svg{width:19px; height:19px; stroke:currentColor; fill:none;
+    stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round;}
+  .iconbtn .dot{position:absolute; right:5px; bottom:5px; width:6px; height:6px;
+    border-radius:50%; background:var(--accent);}
+  .sep{width:1px; align-self:stretch; margin:6px 3px; background:var(--rule);}
+
+  /* левый тулбар */
+  #tools{left:14px; top:50%; transform:translateY(-50%); flex-direction:column;}
+  #tools .sep{width:auto; height:1px; align-self:stretch; margin:3px 6px;}
+
+  /* флайаут пера */
+  #penFly{position:fixed; left:66px; top:50%; transform:translateY(-92%);
+    background:var(--panel); border-radius:12px; box-shadow:var(--shadow);
+    padding:10px; display:none; grid-template-columns:repeat(4,26px); gap:8px;}
+  #penFly.open{display:grid;}
+  .swatch{width:26px; height:26px; border-radius:50%; border:2px solid transparent; cursor:pointer;}
+  .swatch.sel{border-color:var(--ink);}
+  .sizes{grid-column:1/-1; display:flex; gap:8px; justify-content:space-between;
+    border-top:1px solid var(--rule); padding-top:9px;}
+  .sizebtn{display:grid; place-items:center; width:26px; height:26px; border-radius:8px;}
+  .sizebtn.sel{background:var(--chalk);}
+  .sizebtn i{border-radius:50%; background:var(--ink); display:block;}
+
+  /* шапка слева */
+  #brand{left:14px; top:14px; padding:6px 12px 6px 8px; gap:9px;}
+  #logo{width:26px; height:26px; border-radius:7px; background:var(--ink);
+    display:grid; place-items:center; flex:none;}
+  #logo b{width:14px; height:3px; background:var(--accent); border-radius:2px; margin-top:7px;}
+  #lesson{line-height:1.25;}
+  #lesson strong{display:block; font-size:13px;}
+  #lesson span{font-size:11px; color:var(--muted);}
+  #brand .sep{margin:2px 4px;}
+  .txtbtn{padding:8px 10px; border-radius:9px; font-weight:600; font-size:12.5px;
+    display:flex; align-items:center; gap:7px;}
+  .txtbtn:hover{background:var(--chalk);}
+  .txtbtn svg{width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.7;
+    stroke-linecap:round; stroke-linejoin:round;}
+
+  /* ИИ-композер */
+  #composer{top:14px; left:50%; transform:translateX(-50%); flex-direction:column;
+    align-items:stretch; width:min(560px, 44vw); padding:10px 12px; gap:8px;}
+  #composer input{border:0; outline:0; background:none; font:15px/1.3 inherit;
+    color:var(--ink); width:100%; -webkit-user-select:text; user-select:text;}
+  #composer input::placeholder{color:var(--muted);}
+  #composerRow{display:flex; align-items:center; gap:6px;}
+  .chip{display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
+    padding:5px 10px; border-radius:999px; background:var(--chalk); color:var(--ink);}
+  .chip:hover{background:var(--rule);}
+  .chip.sel{background:var(--accent-soft); color:var(--accent-ink);
+    box-shadow:inset 0 0 0 1px var(--accent);}
+  .chip svg{width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:1.8;
+    stroke-linecap:round;}
+  #modelChip{margin-left:auto; color:var(--muted); font-weight:600; font-size:12px;
+    display:flex; align-items:center; gap:6px;}
+  #sendBtn{width:30px; height:30px; border-radius:50%; background:var(--accent);
+    color:#fff; display:grid; place-items:center; flex:none;}
+  #sendBtn svg{width:15px; height:15px; stroke:#fff; fill:none; stroke-width:2;
+    stroke-linecap:round; stroke-linejoin:round;}
+  #sendBtn:hover{background:var(--accent-ink);}
+
+  /* правая шапка */
+  #services{right:96px; top:14px;}
+  #avatar{width:30px; height:30px; border-radius:50%; background:var(--accent);
+    color:#fff; font-size:12px; font-weight:700; display:grid; place-items:center; margin:0 3px;}
+
+  /* часы */
+  #clockCard{position:fixed; right:14px; top:10px; width:72px; height:72px;
+    background:var(--panel); border-radius:50%; box-shadow:var(--shadow);}
+  #clockCard svg{width:100%; height:100%;}
+
+  /* низ */
+  #history{left:14px; bottom:14px;}
+  #pages{left:50%; bottom:14px; transform:translateX(-50%); padding:6px 8px;}
+  .pagebtn{min-width:30px; height:30px; padding:0 6px; border-radius:8px; font-weight:600;
+    font-variant-numeric:tabular-nums; color:var(--muted);}
+  .pagebtn:hover{background:var(--chalk);}
+  .pagebtn.cur{background:var(--ink); color:#fff;}
+  #zoomer{right:14px; bottom:14px; padding:4px 6px;}
+  #zoomVal{min-width:44px; text-align:center; font-weight:600;
+    font-variant-numeric:tabular-nums; font-size:12.5px;}
+
+  /* чат */
+  #chat{position:fixed; right:14px; top:96px; bottom:64px; width:300px;
+    background:var(--panel); border-radius:var(--radius); box-shadow:var(--shadow);
+    display:none; flex-direction:column; overflow:hidden;}
+  #chat.open{display:flex;}
+  #chatTabs{display:flex; border-bottom:1px solid var(--rule); flex:none;}
+  #chatTabs button{flex:1; padding:11px 0 10px; font-weight:600; color:var(--muted);
+    border-bottom:2px solid transparent;}
+  #chatTabs button.cur{color:var(--ink); border-bottom-color:var(--accent);}
+  #chatBody{flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:8px;}
+  .msg{max-width:86%; padding:8px 11px; border-radius:11px; font-size:12.5px; line-height:1.45;
+    -webkit-user-select:text; user-select:text;}
+  .msg.ai{background:var(--accent-soft); color:var(--accent-ink); align-self:flex-start;
+    border-bottom-left-radius:4px;}
+  .msg.me{background:var(--chalk); align-self:flex-end; border-bottom-right-radius:4px;}
+  .msg .who{display:block; font-size:10px; font-weight:700; letter-spacing:.06em;
+    text-transform:uppercase; opacity:.65; margin-bottom:3px;}
+  #chatEmpty{margin:auto; text-align:center; color:var(--muted); font-size:12.5px;}
+
+  .tip{position:fixed; transform:translate(-50%,0); background:var(--ink); color:#fff;
+    font-size:11.5px; padding:5px 10px; border-radius:7px; pointer-events:none;
+    opacity:0; transition:opacity .15s;}
+  .tip.show{opacity:1;}
+  #laserDot{position:fixed; width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%;
+    background:radial-gradient(circle, var(--laser) 0 40%, rgba(226,72,61,.25) 70%, transparent 72%);
+    pointer-events:none; display:none; z-index:60;}
+
+  @media (max-width:900px){
+    #composer{width:min(440px,60vw);}
+    #chat{width:min(300px,80vw);}
+    #services{right:14px; top:96px; flex-direction:column;}
+    #clockCard{display:none;}
+  }
+  @media (prefers-reduced-motion: reduce){ *{transition:none !important;} }
+</style>
+
+<div id="viewport">
+  <div id="stage" class="tool-pen">
+    <canvas id="inkLayer"></canvas>
+    <canvas id="liveLayer"></canvas>
+    <div class="boardcard" style="left:calc(50% - 170px); top:170px;">
+      <span class="tag">Задача · из банка Неумошки</span>
+      <h3>№ 1 — Делители</h3>
+      <p>12 карандашей разложили по коробкам, поровну в&nbsp;каждую. Сколько коробок
+         могло получиться, если коробок было больше одной?</p>
+      <div class="src">M0451 · сложность 2 · банк vault</div>
+    </div>
+  </div>
+</div>
+<div id="laserDot"></div>
+
+<!-- левый тулбар -->
+<nav class="panel" id="tools" aria-label="Инструменты">
+  <button class="iconbtn" data-tool="select" data-tip="Выбор">
+    <svg viewBox="0 0 24 24"><path d="M5 3l14 8-6.5 1.5L15 19l-2.5 1-2.5-6.5L5 17z"/></svg></button>
+  <button class="iconbtn" data-tool="hand" data-tip="Рука — перемещение">
+    <svg viewBox="0 0 24 24"><path d="M8 12V6.5a1.5 1.5 0 0 1 3 0V11m0-5.5v-1a1.5 1.5 0 0 1 3 0V11m0-4.5a1.5 1.5 0 0 1 3 0V13m-9-1v6a4 4 0 0 0 4 4h1.6a4 4 0 0 0 3.7-2.4l1.9-4.8a1.6 1.6 0 0 0-2.9-1.3L15 15"/></svg></button>
+  <div class="sep"></div>
+  <button class="iconbtn active" data-tool="pen" id="penBtn" data-tip="Перо · цвет и толщина">
+    <svg viewBox="0 0 24 24"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19l-4 1z"/><path d="M13.5 7.5l3 3"/></svg>
+    <span class="dot" id="penDot"></span></button>
+  <button class="iconbtn" data-tool="marker" data-tip="Маркер-выделитель">
+    <svg viewBox="0 0 24 24"><path d="M9 15l-4.2 4.2M9 15l8.5-8.5a2 2 0 0 1 3 2.6L12 17.5 9 15z"/><path d="M4 21h6"/></svg></button>
+  <button class="iconbtn" data-tool="eraser" data-tip="Ластик">
+    <svg viewBox="0 0 24 24"><path d="M7 20h11M6 14l7-7a2 2 0 0 1 3 0l3 3a2 2 0 0 1 0 3l-4 4H9l-3-3z"/></svg></button>
+  <div class="sep"></div>
+  <button class="iconbtn" data-tool="text" data-tip="Текст (в разработке)">
+    <svg viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16m-3 0h6"/></svg></button>
+  <button class="iconbtn" data-tool="shape" data-tip="Фигуры (в разработке)">
+    <svg viewBox="0 0 24 24"><rect x="3.5" y="10" width="10" height="10" rx="1.5"/><circle cx="16" cy="8" r="4.5"/></svg></button>
+  <div class="sep"></div>
+  <button class="iconbtn" data-tool="laser" data-tip="Лазерная указка">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 4V2M12 22v-2M4 12H2m20 0h-2M6.3 6.3 4.9 4.9m14.2 14.2-1.4-1.4m0-11.4 1.4-1.4M4.9 19.1l1.4-1.4"/></svg></button>
+  <button class="iconbtn" data-tool="stamp" data-tip="Штамп учителя ✓">
+    <svg viewBox="0 0 24 24"><path d="M5 13l4.5 4.5L19 8"/></svg></button>
+</nav>
+
+<!-- флайаут пера -->
+<div id="penFly" role="menu" aria-label="Цвет и толщина пера">
+  <button class="swatch sel" style="background:#0f1115" data-color="#0f1115" aria-label="Чернила"></button>
+  <button class="swatch" style="background:#1e6f5c" data-color="#1e6f5c" aria-label="Зелёный"></button>
+  <button class="swatch" style="background:#2456a8" data-color="#2456a8" aria-label="Синий"></button>
+  <button class="swatch" style="background:#c9403a" data-color="#c9403a" aria-label="Красный (учитель)"></button>
+  <div class="sizes">
+    <button class="sizebtn" data-size="2"><i style="width:4px;height:4px"></i></button>
+    <button class="sizebtn sel" data-size="3.5"><i style="width:7px;height:7px"></i></button>
+    <button class="sizebtn" data-size="6"><i style="width:11px;height:11px"></i></button>
+    <button class="sizebtn" data-size="10"><i style="width:15px;height:15px"></i></button>
+  </div>
+</div>
+
+<!-- шапка -->
+<header class="panel" id="brand">
+  <span id="logo" aria-hidden="true"><b></b></span>
+  <span id="lesson"><strong>Алгебра · 7А</strong><span>Линейные уравнения · урок 12</span></span>
+  <div class="sep"></div>
+  <button class="txtbtn" data-tip="Шаблоны, PDF и картинки">
+    <svg viewBox="0 0 24 24"><path d="M4 7a2 2 0 0 1 2-2h3l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z"/></svg>
+    Медиатека</button>
+</header>
+
+<div class="panel" id="services">
+  <button class="iconbtn" data-tip="Снимок доски → PNG">
+    <svg viewBox="0 0 24 24"><path d="M4 8h3l2-2.5h6L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.4"/></svg></button>
+  <button class="iconbtn" data-tip="Пригласить: код ПАРТА-7А2" id="inviteBtn">
+    <svg viewBox="0 0 24 24"><circle cx="9.5" cy="8.5" r="3.5"/><path d="M3.5 20a6 6 0 0 1 12 0M17 8v6m3-3h-6"/></svg></button>
+  <button class="iconbtn" data-tip="Чат и ИИ-помощник" id="chatBtn">
+    <svg viewBox="0 0 24 24"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-5 4V6z"/></svg></button>
+  <span id="avatar" title="Павел Сергеевич">ПС</span>
+</div>
+
+<!-- часы -->
+<div id="clockCard" title="Время урока">
+  <svg viewBox="0 0 100 100" aria-label="Часы">
+    <circle cx="50" cy="50" r="46" fill="#fff" stroke="#e3dfd1" stroke-width="1.5"/>
+    <g id="ticks" stroke="#0f1115"></g>
+    <line id="hourHand" x1="50" y1="50" x2="50" y2="29" stroke="#0f1115" stroke-width="4" stroke-linecap="round"/>
+    <line id="minHand" x1="50" y1="50" x2="50" y2="17" stroke="#0f1115" stroke-width="2.6" stroke-linecap="round"/>
+    <line id="secHand" x1="50" y1="54" x2="50" y2="15" stroke="#1e6f5c" stroke-width="1.2" stroke-linecap="round"/>
+    <circle cx="50" cy="50" r="2.6" fill="#1e6f5c"/>
+  </svg>
+</div>
+
+<!-- ИИ-композер -->
+<div class="panel" id="composer">
+  <input id="ask" type="text" placeholder="Что добавить на доску? Опишите — задачу, схему, клетку…"
+         aria-label="Запрос к ИИ">
+  <div id="composerRow">
+    <button class="chip sel" data-kind="task">
+      <svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M9 9h6M9 13h6"/></svg>Задача из банка</button>
+    <button class="chip" data-kind="scheme">
+      <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.8 7.5 11 15.5M16.2 7.5 13 15.5"/></svg>Схема</button>
+    <button class="chip" data-kind="grid">
+      <svg viewBox="0 0 24 24"><path d="M4 9h16M4 15h16M9 4v16M15 4v16"/></svg>Клетка</button>
+    <span id="modelChip">
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/></svg>
+      Неумошка&nbsp;ИИ</span>
+    <button id="sendBtn" aria-label="Создать">
+      <svg viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button>
+  </div>
+</div>
+
+<!-- низ -->
+<div class="panel" id="history">
+  <button class="iconbtn danger" id="clearBtn" data-tip="Очистить страницу">
+    <svg viewBox="0 0 24 24"><path d="M5 7h14M9 7V5h6v2m-8 0 1 13h8l1-13"/></svg></button>
+  <div class="sep"></div>
+  <button class="iconbtn" id="undoBtn" data-tip="Отменить">
+    <svg viewBox="0 0 24 24"><path d="M8 5 3 10l5 5M3.5 10H15a5.5 5.5 0 0 1 0 11h-3"/></svg></button>
+</div>
+
+<nav class="panel" id="pages" aria-label="Страницы"></nav>
+
+<div class="panel" id="zoomer">
+  <button class="iconbtn" id="zoomOut" data-tip="Мельче"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+  <span id="zoomVal">100%</span>
+  <button class="iconbtn" id="zoomIn" data-tip="Крупнее"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+</div>
+
+<!-- чат -->
+<aside id="chat" aria-label="Чат урока">
+  <div id="chatTabs">
+    <button class="cur" data-tab="chat">Чат</button>
+    <button data-tab="ai">ИИ</button>
+  </div>
+  <div id="chatBody"><div id="chatEmpty">Сообщений пока нет.<br>Класс подключается по коду <b>ПАРТА-7А2</b>.</div></div>
+</aside>
+
+<div class="tip" id="tip" role="tooltip"></div>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const stage = $('#stage'), ink = $('#inkLayer'), live = $('#liveLayer');
+  const ictx = ink.getContext('2d'), lctx = live.getContext('2d');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---- размер холста ---- */
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  function sizeCanvas(){
+    for (const c of [ink, live]) {
+      const img = c === ink ? c.toDataURL() : null;
+      c.width = innerWidth * dpr; c.height = innerHeight * dpr;
+      c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (img && img.length > 200) { const im = new Image();
+        im.onload = () => ictx.drawImage(im, 0, 0, innerWidth, innerHeight); im.src = img; }
+    }
+  }
+  sizeCanvas(); addEventListener('resize', sizeCanvas);
+
+  /* ---- состояние ---- */
+  let tool = 'pen', penColor = '#0f1115', penSize = 3.5;
+  let drawing = false, pts = [], undoStack = [];
+  const laserPts = [];
+
+  /* ---- инструменты ---- */
+  const toolBtns = document.querySelectorAll('#tools [data-tool]');
+  const penFly = $('#penFly');
+  toolBtns.forEach(b => b.addEventListener('click', () => {
+    const t = b.dataset.tool;
+    if (t === 'pen' && tool === 'pen') { penFly.classList.toggle('open'); return; }
+    penFly.classList.remove('open');
+    if (t === 'text' || t === 'shape' || t === 'select' || t === 'hand') {
+      flashTip(b, b.dataset.tip + ' — в мокапе не активен'); return;
+    }
+    tool = t;
+    toolBtns.forEach(x => x.classList.toggle('active', x === b));
+    stage.className = 'tool-' + tool;
+    $('#laserDot').style.display = 'none';
+  }));
+  penFly.querySelectorAll('.swatch').forEach(s => s.addEventListener('click', () => {
+    penFly.querySelectorAll('.swatch').forEach(x => x.classList.remove('sel'));
+    s.classList.add('sel'); penColor = s.dataset.color;
+    $('#penDot').style.background = penColor;
+  }));
+  penFly.querySelectorAll('.sizebtn').forEach(s => s.addEventListener('click', () => {
+    penFly.querySelectorAll('.sizebtn').forEach(x => x.classList.remove('sel'));
+    s.classList.add('sel'); penSize = +s.dataset.size;
+  }));
+
+  /* ---- рисование ---- */
+  function xy(e){ return [e.clientX, e.clientY]; }
+  function strokeStyle(ctx){
+    if (tool === 'marker') { ctx.strokeStyle = 'rgba(255,214,68,.45)'; ctx.lineWidth = 16; }
+    else { ctx.strokeStyle = penColor; ctx.lineWidth = penSize; }
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  }
+  function drawPath(ctx, p){
+    if (p.length < 2) return;
+    ctx.beginPath(); ctx.moveTo(p[0][0], p[0][1]);
+    for (let i = 1; i < p.length - 1; i++) {
+      const mx = (p[i][0] + p[i+1][0]) / 2, my = (p[i][1] + p[i+1][1]) / 2;
+      ctx.quadraticCurveTo(p[i][0], p[i][1], mx, my);
+    }
+    ctx.stroke();
+  }
+  ink.addEventListener('pointerdown', e => {
+    if (tool === 'laser') return;
+    if (tool === 'stamp') { placeStamp(e); return; }
+    drawing = true; pts = [xy(e)]; ink.setPointerCapture(e.pointerId);
+    undoStack.push(ictx.getImageData(0, 0, ink.width, ink.height));
+    if (undoStack.length > 20) undoStack.shift();
+  });
+  ink.addEventListener('pointermove', e => {
+    if (tool === 'laser') { laserMove(e); return; }
+    if (!drawing) return;
+    pts.push(xy(e));
+    lctx.clearRect(0, 0, innerWidth, innerHeight);
+    if (tool === 'eraser') {
+      ictx.save(); ictx.globalCompositeOperation = 'destination-out';
+      ictx.lineWidth = 26; ictx.lineCap = 'round'; ictx.lineJoin = 'round';
+      drawPath(ictx, pts.slice(-3)); ictx.restore();
+    } else { strokeStyle(lctx); drawPath(lctx, pts); }
+  });
+  const finish = () => {
+    if (!drawing) return; drawing = false;
+    if (tool !== 'eraser') { strokeStyle(ictx); drawPath(ictx, pts); }
+    lctx.clearRect(0, 0, innerWidth, innerHeight); pts = [];
+  };
+  ink.addEventListener('pointerup', finish);
+  ink.addEventListener('pointercancel', finish);
+
+  /* ---- лазер ---- */
+  const laserDot = $('#laserDot');
+  function laserMove(e){
+    laserDot.style.display = 'block';
+    laserDot.style.left = e.clientX + 'px'; laserDot.style.top = e.clientY + 'px';
+    if (!reduced) laserPts.push({ x: e.clientX, y: e.clientY, t: performance.now() });
+  }
+  (function laserLoop(){
+    if (!reduced) {
+      lctx.clearRect(0, 0, innerWidth, innerHeight);
+      const now = performance.now();
+      while (laserPts.length && now - laserPts[0].t > 550) laserPts.shift();
+      for (let i = 1; i < laserPts.length; i++) {
+        const a = laserPts[i-1], b = laserPts[i], k = 1 - (now - b.t) / 550;
+        lctx.strokeStyle = `rgba(226,72,61,${0.55 * k})`;
+        lctx.lineWidth = 5 * k + 1; lctx.lineCap = 'round';
+        lctx.beginPath(); lctx.moveTo(a.x, a.y); lctx.lineTo(b.x, b.y); lctx.stroke();
+      }
+    }
+    requestAnimationFrame(laserLoop);
+  })();
+
+  /* ---- штампы учителя ---- */
+  function placeStamp(e){
+    const d = document.createElement('div');
+    d.className = 'stampmark';
+    d.style.left = (e.clientX - 17) + 'px'; d.style.top = (e.clientY - 17) + 'px';
+    d.innerHTML = '<svg viewBox="0 0 34 34"><circle cx="17" cy="17" r="15" fill="#e6f0ec" stroke="#1e6f5c" stroke-width="2"/><path d="M10 17.5l4.5 4.5L24 12" fill="none" stroke="#1e6f5c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    stage.appendChild(d);
+  }
+
+  /* ---- undo / очистка ---- */
+  $('#undoBtn').addEventListener('click', () => {
+    const s = undoStack.pop(); if (s) ictx.putImageData(s, 0, 0);
+  });
+  $('#clearBtn').addEventListener('click', () => {
+    undoStack.push(ictx.getImageData(0, 0, ink.width, ink.height));
+    ictx.clearRect(0, 0, innerWidth, innerHeight);
+    stage.querySelectorAll('.stampmark').forEach(n => n.remove());
+  });
+
+  /* ---- страницы ---- */
+  const PAGES = 4; let cur = 0; const saved = Array(PAGES).fill(null);
+  const pagesNav = $('#pages');
+  for (let i = 0; i < PAGES; i++) {
+    const b = document.createElement('button');
+    b.className = 'pagebtn' + (i === 0 ? ' cur' : ''); b.textContent = i + 1;
+    b.addEventListener('click', () => switchPage(i)); pagesNav.appendChild(b);
+  }
+  const addB = document.createElement('button');
+  addB.className = 'pagebtn'; addB.textContent = '+'; addB.title = 'Новая страница (в мокапе — 4)';
+  pagesNav.appendChild(addB);
+  function switchPage(i){
+    if (i === cur) return;
+    saved[cur] = ink.toDataURL(); undoStack.length = 0;
+    ictx.clearRect(0, 0, innerWidth, innerHeight);
+    if (saved[i]) { const im = new Image();
+      im.onload = () => ictx.drawImage(im, 0, 0, innerWidth, innerHeight); im.src = saved[i]; }
+    cur = i;
+    pagesNav.querySelectorAll('.pagebtn').forEach((b, j) => b.classList.toggle('cur', j === i));
+  }
+
+  /* ---- зум ---- */
+  let zoom = 1;
+  const apply = () => { stage.style.transform = `scale(${zoom})`;
+    $('#zoomVal').textContent = Math.round(zoom * 100) + '%'; };
+  $('#zoomIn').addEventListener('click', () => { zoom = Math.min(2, zoom + .1); apply(); });
+  $('#zoomOut').addEventListener('click', () => { zoom = Math.max(.5, zoom - .1); apply(); });
+
+  /* ---- часы ---- */
+  const ticks = $('#ticks');
+  for (let i = 0; i < 12; i++) {
+    const a = i * 30 * Math.PI / 180, r1 = i % 3 ? 42 : 39;
+    ticks.innerHTML += `<line x1="${50 + r1 * Math.sin(a)}" y1="${50 - r1 * Math.cos(a)}"
+      x2="${50 + 45 * Math.sin(a)}" y2="${50 - 45 * Math.cos(a)}"
+      stroke-width="${i % 3 ? 1 : 2.2}"/>`;
+  }
+  function clock(){
+    const d = new Date(), h = d.getHours() % 12, m = d.getMinutes(), s = d.getSeconds();
+    const rot = (el, deg) => $(el).setAttribute('transform', `rotate(${deg} 50 50)`);
+    rot('#hourHand', h * 30 + m * .5); rot('#minHand', m * 6); rot('#secHand', s * 6);
+  }
+  clock(); setInterval(clock, reduced ? 30000 : 1000);
+  if (reduced) $('#secHand').style.display = 'none';
+
+  /* ---- чат + ИИ-композер ---- */
+  const chat = $('#chat'), chatBody = $('#chatBody');
+  $('#chatBtn').addEventListener('click', () => chat.classList.toggle('open'));
+  document.querySelectorAll('#chatTabs button').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('#chatTabs button').forEach(x => x.classList.remove('cur'));
+    t.classList.add('cur');
+  }));
+  function say(cls, who, text){
+    $('#chatEmpty')?.remove();
+    const m = document.createElement('div'); m.className = 'msg ' + cls;
+    m.innerHTML = `<span class="who">${who}</span>${text}`;
+    chatBody.appendChild(m); chatBody.scrollTop = 1e9;
+  }
+  let kind = 'task';
+  document.querySelectorAll('.chip[data-kind]').forEach(c => c.addEventListener('click', () => {
+    document.querySelectorAll('.chip[data-kind]').forEach(x => x.classList.remove('sel'));
+    c.classList.add('sel'); kind = c.dataset.kind;
+  }));
+  const KINDNAME = { task: 'задачу из банка', scheme: 'схему', grid: 'клетчатое поле' };
+  function send(){
+    const q = $('#ask').value.trim() || 'по теме урока';
+    chat.classList.add('open');
+    document.querySelector('#chatTabs [data-tab=ai]').click();
+    say('me', 'Вы', `Создай ${KINDNAME[kind]}: ${q}`);
+    setTimeout(() => {
+      say('ai', 'Неумошка ИИ', `Добавила ${KINDNAME[kind]} на доску. В продукте здесь
+        подключается банк из 5385 задач и генератор схем.`);
+      dropCard(q);
+    }, reduced ? 0 : 450);
+    $('#ask').value = '';
+  }
+  $('#sendBtn').addEventListener('click', send);
+  $('#ask').addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+  function dropCard(q){
+    const d = document.createElement('div'); d.className = 'boardcard';
+    d.style.left = (innerWidth / 2 - 170 + (Math.random() * 120 - 60)) + 'px';
+    d.style.top = (240 + Math.random() * 90) + 'px';
+    d.innerHTML = `<span class="tag">${kind === 'task' ? 'Задача · из банка Неумошки'
+        : kind === 'scheme' ? 'Схема · ИИ' : 'Клетка · поле для решения'}</span>
+      <h3>${kind === 'task' ? '№ 2 — Новая задача' : kind === 'scheme' ? 'Схема' : 'Поле для решения'}</h3>
+      <p>${kind === 'grid'
+        ? '<span style="display:block;height:84px;background:linear-gradient(#e7e3d6 1px,transparent 1px) 0 0/12px 12px,linear-gradient(90deg,#e7e3d6 1px,transparent 1px) 0 0/12px 12px;border:1px solid #e3dfd1;border-radius:6px"></span>'
+        : 'Запрос: «' + q + '». Содержимое подставит генератор в продукте.'}</p>
+      <div class="src">мокап · клик по доске продолжает работу</div>`;
+    stage.appendChild(d);
+  }
+
+  /* ---- тултипы ---- */
+  const tip = $('#tip'); let tipT;
+  document.querySelectorAll('[data-tip]').forEach(el => {
+    el.addEventListener('mouseenter', () => {
+      const r = el.getBoundingClientRect();
+      tip.textContent = el.dataset.tip;
+      const leftPanel = r.left < 120;
+      tip.style.left = leftPanel ? (r.right + 66 - r.width / 2) + 'px' : (r.left + r.width / 2) + 'px';
+      tip.style.top = (leftPanel ? r.top + 6 : r.bottom + 8) + 'px';
+      tip.classList.add('show');
+    });
+    el.addEventListener('mouseleave', () => tip.classList.remove('show'));
+  });
+  function flashTip(el, text){
+    const r = el.getBoundingClientRect();
+    tip.textContent = text;
+    tip.style.left = (r.right + 80) + 'px'; tip.style.top = (r.top + 6) + 'px';
+    tip.classList.add('show');
+    clearTimeout(tipT); tipT = setTimeout(() => tip.classList.remove('show'), 1600);
+  }
+
+  /* приглашение */
+  $('#inviteBtn').addEventListener('click', () => {
+    say('ai', 'Система', 'Код класса: <b>ПАРТА-7А2</b> — ученики вводят его на parta.ru/j');
+    chat.classList.add('open');
+    document.querySelector('#chatTabs [data-tab=chat]').click();
+  });
+})();
+</script>
