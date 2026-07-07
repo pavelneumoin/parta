@@ -151,10 +151,32 @@ model Session {
 
   workspaces Workspace[]
   activity   ActivityLog[]
+  widgets    BoardWidget[]
 
   @@index([teacherId])
   @@index([classId])
   @@index([joinCode])
+}
+
+// -------------------------------------------------------------- ВИДЖЕТЫ ДОСКИ
+// Предметные инструменты учителя (график, тригокруг, таймер, …), видимые
+// ученикам live. workspaceId = null → всем в сессии; иначе — адресно одному.
+
+model BoardWidget {
+  id          String    @id @default(cuid())
+  sessionId   String
+  session     Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  workspaceId String?
+  pageIndex   Int       @default(0)
+  kind        String                          // ключ реестра: plot | trig | timer | ...
+  xFrac       Float     @default(0.3)         // позиция в долях размера листа (0..1)
+  yFrac       Float     @default(0.15)
+  state       Json?                           // сериализованное состояние инструмента
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?                       // soft delete
+
+  @@index([sessionId, deletedAt])
 }
 
 // -------------------------------------------------------------- WORKSPACE = КОПИЯ ДЛЯ УЧЕНИКА
