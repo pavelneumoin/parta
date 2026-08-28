@@ -17,7 +17,7 @@ export function AppNavLink({
   return (
     <Link
       href={href}
-      className={`px-3 py-1.5 rounded-lg text-sm transition ${
+      className={`inline-flex min-h-11 shrink-0 items-center whitespace-nowrap px-3 py-1.5 rounded-lg text-sm transition ${
         active
           ? "bg-ink text-paper"
           : "text-ink/80 hover:bg-rule/40"

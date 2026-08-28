@@ -13,10 +13,10 @@ export default async function AppLayout({
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-rule bg-paper">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-6">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:flex-nowrap sm:gap-6 sm:px-6">
           <Link
             href="/app"
-            className="flex items-center gap-2 font-semibold tracking-tight"
+            className="flex shrink-0 items-center gap-2 font-semibold tracking-tight"
             title="К дашборду"
           >
             <svg width="24" height="24" viewBox="0 0 28 28" fill="none" aria-hidden>
@@ -28,7 +28,10 @@ export default async function AppLayout({
             </svg>
             Парта
           </Link>
-          <nav className="flex items-center gap-1" aria-label="Главная навигация">
+          <nav
+            className="order-last flex w-full items-center gap-1 overflow-x-auto p-1 sm:order-none sm:w-auto sm:overflow-visible sm:p-0"
+            aria-label="Главная навигация"
+          >
             <AppNavLink href="/app" exact>Сегодня</AppNavLink>
             <AppNavLink href="/app/lessons">Уроки</AppNavLink>
             <AppNavLink href="/app/classes">Классы</AppNavLink>
@@ -47,7 +50,7 @@ export default async function AppLayout({
                 await signOut({ redirectTo: "/" });
               }}
             >
-              <button className="px-3 py-1.5 rounded-lg text-sm hover:bg-rule/50 transition">
+              <button className="min-h-11 px-3 py-1.5 rounded-lg text-sm hover:bg-rule/50 transition sm:min-h-0">
                 Выйти
               </button>
             </form>
