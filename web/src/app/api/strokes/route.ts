@@ -1,43 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { db } from "@/lib/db";
-import { auth } from "@/auth";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { authorizeWorkspaceRequest } from "@/lib/studentAccess";
+import { strokesBatchSchema } from "@/lib/strokeSchemas";
 
 export const dynamic = "force-dynamic";
-
-const pointSchema = z.tuple([z.number(), z.number(), z.number()]);
-
-const strokeSchema = z.object({
-  id: z.string().min(8).max(64),
-  workspaceId: z.string(),
-  pageIndex: z.number().int().min(0).max(31).default(0),
-  layer: z.enum(["student", "teacher"]).default("student"),
-  color: z.string().regex(/^#[0-9a-fA-F]{3,8}$/),
-  size: z.number().positive().max(40),
-  simulatePressure: z.boolean().default(false),
-  points: z.array(pointSchema).min(2).max(4000),
-});
-
-const batchSchema = z.object({
-  strokes: z.array(strokeSchema).max(80),
-});
 
 /**
  * Принимаем пачку новых штрихов от ученика или учителя.
  * Идемпотентно по `Stroke.id` (UUID с клиента). Дубль = no-op.
  *
- * Rate limit: 120 req/min per IP (≈2 flush/s — соответствует FLUSH_MS=600ms).
+ * Rate limit: 240 req/min per authenticated workspace + role + IP.
+ * Общий NAT класса не объединяет лимиты разных учеников.
  */
 export async function POST(req: NextRequest) {
-  // Rate-limit: 120 батчей в минуту на IP (2/с при FLUSH_MS=600мс)
   const ip = getClientIp(req.headers);
-  if (!checkRateLimit(`strokes:${ip}`, 120)) {
-    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+
+  // Высокий coarse-budget останавливает перебор случайных workspace до
+  // обращения к БД, но оставляет запас классу за общим школьным NAT.
+  if (!checkRateLimit(`strokes:coarse:${ip}`, 4_000)) {
+    return NextResponse.json(
+      { error: "rate_limited" },
+      { status: 429, headers: { "Retry-After": "2" } },
+    );
+  }
+  const contentLength = Number(req.headers.get("content-length") ?? 0);
+  if (Number.isFinite(contentLength) && contentLength > 2_000_000) {
+    return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
   }
 
   const body = await req.json().catch(() => null);
-  const parsed = batchSchema.safeParse(body);
+  const parsed = strokesBatchSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "invalid", issues: parsed.error.issues },
@@ -56,9 +49,14 @@ export async function POST(req: NextRequest) {
 
   const ws = await db.workspace.findUnique({
     where: { id: workspaceId },
-    include: {
-      student: true,
-      session: { select: { closedAt: true, teacherId: true, freezeUntil: true } },
+    select: {
+      id: true,
+      status: true,
+      studentAccessHash: true,
+      studentAccessExpiresAt: true,
+      session: {
+        select: { closedAt: true, teacherId: true, freezeUntil: true },
+      },
     },
   });
   if (!ws) return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -66,16 +64,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "session_closed" }, { status: 410 });
   }
 
-  // авторизация: ученик через anon-токен, учитель — через session
-  const anonToken = req.headers.get("x-anon-token");
-  const isStudent = anonToken && anonToken === ws.student.anonToken;
-  let isTeacher = false;
-  if (!isStudent) {
-    const authz = await auth();
-    isTeacher = !!(authz?.user?.id && authz.user.id === ws.session.teacherId);
-  }
-  if (!isStudent && !isTeacher) {
+  const viewer = await authorizeWorkspaceRequest(req, ws);
+  if (!viewer) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+  const isStudent = viewer.role === "student";
+  const isTeacher = viewer.role === "teacher";
+
+  // Школьный класс почти всегда сидит за одним NAT. Лимит только по IP
+  // объединял 20–30 планшетов и блокировал сохранение уже со второго ученика.
+  // Workspace credential уже проверен, поэтому изолируем budget каждой работы.
+  if (
+    !checkRateLimit(
+      `strokes:${workspaceId}:${viewer.role}:${ip}`,
+      240,
+    )
+  ) {
+    return NextResponse.json(
+      { error: "rate_limited" },
+      { status: 429, headers: { "Retry-After": "2" } },
+    );
   }
 
   // заморозка класса — ученики read-only до freezeUntil; учитель пишет всегда
@@ -93,7 +101,74 @@ export async function POST(req: NextRequest) {
   const authorRole = isTeacher ? "teacher" : "student";
   const enforcedLayer = isTeacher ? "teacher" : "student";
 
-  await db.$transaction(async (tx) => {
+  const writeResult = await db.$transaction(async (tx) => {
+    const incomingById = new Map(strokes.map((stroke) => [stroke.id, stroke]));
+    const existing = await tx.stroke.findMany({
+      where: { id: { in: [...incomingById.keys()] } },
+      select: {
+        id: true,
+        workspaceId: true,
+        pageIndex: true,
+        layer: true,
+        authorRole: true,
+        color: true,
+        size: true,
+        simulatePressure: true,
+        coordinateSpace: true,
+        brushKind: true,
+        renderVersion: true,
+        points: true,
+      },
+    });
+    for (const saved of existing) {
+      const incoming = incomingById.get(saved.id)!;
+      const samePayload =
+        saved.workspaceId === workspaceId &&
+        saved.pageIndex === incoming.pageIndex &&
+        saved.layer === enforcedLayer &&
+        saved.authorRole === authorRole &&
+        saved.color === incoming.color &&
+        saved.size === incoming.size &&
+        saved.simulatePressure === incoming.simulatePressure &&
+        saved.coordinateSpace === incoming.coordinateSpace &&
+        saved.brushKind === incoming.brushKind &&
+        saved.renderVersion === incoming.renderVersion &&
+        JSON.stringify(saved.points) === JSON.stringify(incoming.points);
+      if (!samePayload) return "id_conflict" as const;
+    }
+    const allAlreadyStored = existing.length === strokes.length;
+
+    const now = new Date();
+    if (isStudent) {
+      // Повторяем все блокировки внутри write-транзакции: submit/freeze/close
+      // не должны проскочить между предварительной проверкой и insert.
+      const guard = await tx.workspace.updateMany({
+        where: {
+          id: workspaceId,
+          status: { not: "submitted" },
+          session: {
+            closedAt: null,
+            OR: [
+              { freezeUntil: null },
+              { freezeUntil: { lte: now } },
+            ],
+          },
+        },
+        data: { lastActivityAt: now, status: "active" },
+      });
+      if (guard.count === 0) {
+        return allAlreadyStored
+          ? ("duplicate_blocked" as const)
+          : ("blocked" as const);
+      }
+    } else {
+      const guard = await tx.workspace.updateMany({
+        where: { id: workspaceId, session: { closedAt: null } },
+        data: { lastActivityAt: now },
+      });
+      if (guard.count === 0) return "blocked" as const;
+    }
+
     for (const s of strokes) {
       await tx.stroke.upsert({
         where: { id: s.id },
@@ -106,19 +181,61 @@ export async function POST(req: NextRequest) {
           color: s.color,
           size: s.size,
           simulatePressure: s.simulatePressure,
+          coordinateSpace: s.coordinateSpace,
+          brushKind: s.brushKind,
+          renderVersion: s.renderVersion,
           points: s.points,
         },
         update: {}, // append-only: дубли игнорим
       });
     }
-    await tx.workspace.update({
+    return "ok" as const;
+  });
+
+  if (writeResult === "id_conflict") {
+    return NextResponse.json({ error: "id_conflict" }, { status: 409 });
+  }
+  if (writeResult === "duplicate_blocked") {
+    // Exact idempotent replay does not mutate a submitted workspace. It lets a
+    // stale durable outbox clear safely after a lost ACK.
+    return NextResponse.json({
+      ok: true,
+      accepted: strokes.length,
+      replayed: true,
+    });
+  }
+  if (writeResult === "blocked") {
+    const current = await db.workspace.findUnique({
       where: { id: workspaceId },
-      data: {
-        lastActivityAt: new Date(),
-        status: isStudent ? "active" : undefined,
+      select: {
+        status: true,
+        session: { select: { closedAt: true, freezeUntil: true } },
       },
     });
-  });
+    if (current?.session.closedAt) {
+      return NextResponse.json({ error: "session_closed" }, { status: 410 });
+    }
+    if (isStudent && current?.status === "submitted") {
+      return NextResponse.json(
+        { error: "already_submitted" },
+        { status: 409 },
+      );
+    }
+    if (
+      isStudent &&
+      current?.session.freezeUntil &&
+      current.session.freezeUntil.getTime() > Date.now()
+    ) {
+      return NextResponse.json(
+        {
+          error: "frozen",
+          until: current.session.freezeUntil.toISOString(),
+        },
+        { status: 423 },
+      );
+    }
+    return NextResponse.json({ error: "write_conflict" }, { status: 409 });
+  }
 
   return NextResponse.json({ ok: true, accepted: strokes.length });
 }

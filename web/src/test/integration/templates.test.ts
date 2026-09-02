@@ -187,11 +187,9 @@ describe("GET /api/templates/[id]/file", () => {
       classId: klass.id,
       studentIds: klass.students.map((s) => s.id),
     });
-    void session;
 
-    const student = klass.students[0]!;
     const r = await api("GET", `/api/templates/${templateId}/file`, {
-      anonToken: student.anonToken,
+      anonToken: session.workspaces[0]!.accessCookie,
     });
     expect(r.status).toBe(200);
   });
@@ -206,16 +204,22 @@ describe("GET /api/templates/[id]/file", () => {
     // другой учитель, его ученик ничего не должен видеть
     const { teacher: t2 } = await createTeacher();
     const otherKlass = await createClass(t2.id, ["B."]);
-    const otherStudent = otherKlass.students[0]!;
+    const otherLesson = await createLesson(t2.id, { classId: otherKlass.id });
+    const otherSession = await createSession({
+      teacherId: t2.id,
+      lessonId: otherLesson.id,
+      classId: otherKlass.id,
+      studentIds: otherKlass.students.map((student) => student.id),
+    });
     void t1;
 
     const r = await api("GET", `/api/templates/${templateId}/file`, {
-      anonToken: otherStudent.anonToken,
+      anonToken: otherSession.workspaces[0]!.accessCookie,
     });
     expect(r.status).toBe(403);
   });
 
-  it("?t=<token> в query тоже работает (для pdf.js fetch без headers)", async () => {
+  it("legacy ?t=<token> больше не авторизует PDF", async () => {
     const { teacher, email, password } = await createTeacher();
     const cookies = await loginAsTeacher(email, password);
     const pdf = await makePdfBytes(1);
@@ -228,18 +232,19 @@ describe("GET /api/templates/[id]/file", () => {
       where: { id: lesson.id },
       data: { templateId, templateKind: "pdf" },
     });
-    await createSession({
+    const session = await createSession({
       teacherId: teacher.id,
       lessonId: lesson.id,
       classId: klass.id,
       studentIds: klass.students.map((s) => s.id),
     });
-    const student = klass.students[0]!;
 
     const r = await api(
       "GET",
-      `/api/templates/${templateId}/file?t=${encodeURIComponent(student.anonToken)}`,
+      `/api/templates/${templateId}/file?t=${encodeURIComponent(
+        session.workspaces[0]!.accessCookie,
+      )}`,
     );
-    expect(r.status).toBe(200);
+    expect(r.status).toBe(403);
   });
 });

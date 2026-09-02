@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { auth } from "@/auth";
+import { authorizeWorkspaceRequest } from "@/lib/studentAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +64,7 @@ export async function POST(
  * GET /api/workspaces/[id]/comments
  *
  * Возвращает все комментарии к workspace.
- * Auth: учитель-владелец ИЛИ ученик с anon-токеном.
+ * Доступ: учитель-владелец ИЛИ ученик, вошедший в этот workspace.
  * Query: ?page=0 — фильтрует по номеру страницы (опционально).
  */
 export async function GET(
@@ -78,24 +79,20 @@ export async function GET(
 
   const ws = await db.workspace.findUnique({
     where: { id },
-    include: {
-      student: { select: { anonToken: true } },
+    select: {
+      id: true,
+      studentAccessHash: true,
+      studentAccessExpiresAt: true,
       session: { select: { teacherId: true } },
     },
   });
   if (!ws) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  // Авторизация: ученик или учитель
-  const anonToken = req.headers.get("x-anon-token");
-  const isStudent = anonToken && anonToken === ws.student.anonToken;
-  let isTeacher = false;
-  if (!isStudent) {
-    const authz = await auth();
-    isTeacher = !!(authz?.user?.id && authz.user.id === ws.session.teacherId);
-  }
-  if (!isStudent && !isTeacher) {
+  const viewer = await authorizeWorkspaceRequest(req, ws);
+  if (!viewer) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
+  const isTeacher = viewer.role === "teacher";
 
   const comments = await db.comment.findMany({
     where: {

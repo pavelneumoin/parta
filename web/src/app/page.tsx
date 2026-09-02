@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { JoinCodeForm } from "./JoinCodeForm";
 
 export default function Home() {
   return (
@@ -43,13 +44,8 @@ export default function Home() {
             >
               Завести класс
             </Link>
-            <a
-              href="/prototype/handwriting.html"
-              className="px-5 py-3 rounded-xl border border-rule hover:bg-rule/40 transition font-medium"
-            >
-              Потрогать рукописный ввод
-            </a>
           </div>
+          <JoinCodeForm />
           <p className="mt-6 text-sm text-dim">
             Бесплатно для одного класса · Работает в браузере на любом планшете
           </p>

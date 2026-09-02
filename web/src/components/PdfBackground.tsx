@@ -4,13 +4,17 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { getPdfJs } from "@/lib/pdfjs";
 
 type Props = {
-  /** Прямой URL к PDF (например, /api/templates/<id>/file?t=<token>). */
+  /** URL PDF; авторизация выполняется сервером через HttpOnly cookie. */
   url: string;
   /** 0-based номер страницы. */
   pageIndex: number;
   className?: string;
   /** Внешний ref для snapshot. */
   canvasRef?: React.RefObject<HTMLCanvasElement | null>;
+  /** Сообщает фактическое соотношение сторон PDF-страницы (width / height). */
+  onAspectRatioChange?: (ratio: number) => void;
+  /** Дополнительное backing-store качество при zoom; CSS-размер не меняет. */
+  qualityScale?: number;
 };
 
 type Status = "idle" | "loading" | "ready" | "error";
@@ -20,6 +24,8 @@ export function PdfBackground({
   pageIndex,
   className,
   canvasRef: externalCanvasRef,
+  onAspectRatioChange,
+  qualityScale = 1,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -40,7 +46,7 @@ export function PdfBackground({
 
     (async () => {
       try {
-        const pdfjs = getPdfJs();
+        const pdfjs = await getPdfJs();
         // log для диагностики у пользователя
         // (видно в DevTools → Console)
         console.info("[PdfBackground] loading", { url, pageIndex });
@@ -88,12 +94,20 @@ export function PdfBackground({
         };
         if (cancelled) return;
 
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const dpr = Math.min(
+          3,
+          Math.min(window.devicePixelRatio || 1, 2) *
+            Math.max(1, qualityScale),
+        );
         const cw = container.clientWidth;
         const ch = container.clientHeight;
         if (cw === 0 || ch === 0) return;
 
         const base = page.getViewport({ scale: 1 });
+        const aspectRatio = base.width / base.height;
+        if (Number.isFinite(aspectRatio) && aspectRatio > 0) {
+          onAspectRatioChange?.(aspectRatio);
+        }
         const scale = cw / base.width;
         const viewport = page.getViewport({ scale });
 
@@ -104,9 +118,16 @@ export function PdfBackground({
 
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-        renderTask = page.render({ canvasContext: ctx, viewport });
+        // pdf.js сбрасывает transform контекста в beginDrawing, поэтому
+        // ctx.setTransform(dpr, ...) здесь не работает надёжно на Retina.
+        // Передаём output transform самому renderer: CSS-размер остаётся
+        // viewport.width/height, а backing store получает чёткие dpr-пиксели.
+        renderTask = page.render({
+          canvasContext: ctx,
+          viewport,
+          transform: dpr === 1 ? undefined : [dpr, 0, 0, dpr, 0, 0],
+        });
         await renderTask.promise;
         console.info("[PdfBackground] page rendered", { pageIndex: safePageIndex });
       } catch (e) {
@@ -132,7 +153,7 @@ export function PdfBackground({
       if (renderTask) renderTask.cancel();
       ro.disconnect();
     };
-  }, [status, pageIndex]);
+  }, [status, pageIndex, onAspectRatioChange, qualityScale]);
 
   const retry = useCallback(() => setRetryNonce((n) => n + 1), []);
 

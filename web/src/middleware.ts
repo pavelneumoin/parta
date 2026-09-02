@@ -12,8 +12,13 @@ export default auth((req) => {
     return NextResponse.redirect(signinUrl);
   }
 
-  // авторизованного с /signin или /signup — на /app
-  if ((url.pathname === "/signin" || url.pathname === "/signup") && isAuth) {
+  // Авторизованному учителю не нужен повторный лендинг/вход.
+  if (
+    (url.pathname === "/" ||
+      url.pathname === "/signin" ||
+      url.pathname === "/signup") &&
+    isAuth
+  ) {
     return NextResponse.redirect(new URL("/app", req.url));
   }
 

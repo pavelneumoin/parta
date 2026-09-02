@@ -11,6 +11,7 @@
 
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { generateAnonToken } from "../src/lib/codes";
 
 const db = new PrismaClient();
 
@@ -57,11 +58,7 @@ async function main() {
         students: {
           create: names.map((fullName) => ({
             fullName,
-            anonToken:
-              "demo-" +
-              fullName.replace(/[^a-zA-Zа-яА-Я]/g, "").toLowerCase() +
-              "-" +
-              Math.random().toString(36).slice(2, 8),
+            anonToken: generateAnonToken(),
           })),
         },
       },

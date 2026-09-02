@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { authorizeWorkspaceRequest } from "@/lib/studentAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +21,13 @@ export async function POST(
 
   const ws = await db.workspace.findUnique({
     where: { id },
-    include: {
-      student: true,
-      session: { select: { id: true, closedAt: true } },
+    select: {
+      id: true,
+      status: true,
+      handRaisedAt: true,
+      studentAccessHash: true,
+      studentAccessExpiresAt: true,
+      session: { select: { id: true, closedAt: true, teacherId: true } },
     },
   });
   if (!ws) return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -30,9 +35,15 @@ export async function POST(
     return NextResponse.json({ error: "session_closed" }, { status: 410 });
   }
 
-  const anonToken = req.headers.get("x-anon-token");
-  if (!anonToken || anonToken !== ws.student.anonToken) {
+  const viewer = await authorizeWorkspaceRequest(req, ws);
+  if (viewer?.role !== "student") {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+  if (ws.status === "submitted") {
+    return NextResponse.json(
+      { error: "already_submitted" },
+      { status: 409 },
+    );
   }
 
   const next =

@@ -9,19 +9,46 @@ import {
   setupBasicFixture,
 } from "../helpers";
 
-const makeStroke = (workspaceId: string, overrides?: Partial<{ id: string; pageIndex: number; color: string; size: number }>) => ({
+const makeStroke = (
+  workspaceId: string,
+  overrides?: Partial<{
+    id: string;
+    pageIndex: number;
+    color: string;
+    size: number;
+    coordinateSpace: "legacy" | "normalized";
+    brushKind: "legacy" | "pen" | "marker" | "shape";
+    renderVersion: 1 | 2;
+  }>,
+) => {
+  const normalized = overrides?.coordinateSpace === "normalized";
+  return {
   id: overrides?.id ?? randomUUID(),
   workspaceId,
   pageIndex: overrides?.pageIndex ?? 0,
   color: overrides?.color ?? "#0c0d10",
-  size: overrides?.size ?? 4,
+  size: overrides?.size ?? (normalized ? 0.02 : 4),
   simulatePressure: false,
-  points: [
-    [10, 10, 0.5],
-    [20, 20, 0.6],
-    [30, 30, 0.7],
-  ],
-});
+  ...(overrides?.coordinateSpace
+    ? { coordinateSpace: overrides.coordinateSpace }
+    : {}),
+  ...(overrides?.brushKind ? { brushKind: overrides.brushKind } : {}),
+  ...(overrides?.renderVersion
+    ? { renderVersion: overrides.renderVersion }
+    : {}),
+  points: normalized
+    ? [
+        [0.1, 0.1, 0.5],
+        [0.2, 0.2, 0.6],
+        [0.3, 0.3, 0.7],
+      ]
+    : [
+        [10, 10, 0.5],
+        [20, 20, 0.6],
+        [30, 30, 0.7],
+      ],
+  };
+};
 
 beforeAll(async () => {
   // На случай если предыдущий ран был грязный.
@@ -47,8 +74,99 @@ describe("POST /api/strokes — добавление штрихов", () => {
     expect(r.status).toBe(200);
     expect((r.body as { accepted: number }).accepted).toBe(1);
 
-    const inDb = await db().stroke.count({ where: { workspaceId: ws.id } });
-    expect(inDb).toBe(1);
+    const inDb = await db().stroke.findFirst({ where: { workspaceId: ws.id } });
+    expect(inDb).toMatchObject({
+      coordinateSpace: "legacy",
+      brushKind: "legacy",
+      renderVersion: 1,
+    });
+  });
+
+  it("сохраняет ink v2 и принимает 8-digit hex маркера", async () => {
+    const f = await setupBasicFixture();
+    const ws = f.workspaces[0]!;
+    const student = f.students.find((s) => s.id === ws.studentId)!;
+    const stroke = makeStroke(ws.id, {
+      color: "#ffde3c66",
+      coordinateSpace: "normalized",
+      brushKind: "marker",
+      renderVersion: 2,
+    });
+
+    const created = await api("POST", "/api/strokes", {
+      anonToken: student.anonToken,
+      body: { strokes: [stroke] },
+    });
+    expect(created.status).toBe(200);
+
+    const inDb = await db().stroke.findUnique({ where: { id: stroke.id } });
+    expect(inDb).toMatchObject({
+      color: "#ffde3c66",
+      coordinateSpace: "normalized",
+      brushKind: "marker",
+      renderVersion: 2,
+    });
+
+    const response = await api(
+      "GET",
+      `/api/workspaces/${ws.id}/strokes`,
+      { anonToken: student.anonToken },
+    );
+    expect(response.status).toBe(200);
+    const body = response.body as {
+      strokes: Array<{
+        id: string;
+        coordinateSpace: string;
+        brushKind: string;
+        renderVersion: number;
+      }>;
+    };
+    expect(body.strokes).toContainEqual(
+      expect.objectContaining({
+        id: stroke.id,
+        coordinateSpace: "normalized",
+        brushKind: "marker",
+        renderVersion: 2,
+      }),
+    );
+  });
+
+  it("отклоняет патологические normalized v2 данные до рендера", async () => {
+    const f = await setupBasicFixture();
+    const ws = f.workspaces[0]!;
+    const student = f.students.find((s) => s.id === ws.studentId)!;
+    const base = makeStroke(ws.id, {
+      coordinateSpace: "normalized",
+      brushKind: "pen",
+      renderVersion: 2,
+    });
+
+    for (const stroke of [
+      { ...base, id: randomUUID(), size: 1 },
+      {
+        ...base,
+        id: randomUUID(),
+        points: [[0, 0, 0.5], [1.01, 1, 0.5]],
+      },
+      {
+        ...base,
+        id: randomUUID(),
+        points: [[0, 0, 0.5], [1, 1, 1.1]],
+      },
+      {
+        ...base,
+        id: randomUUID(),
+        coordinateSpace: "legacy",
+      },
+    ]) {
+      const response = await api("POST", "/api/strokes", {
+        anonToken: student.anonToken,
+        body: { strokes: [stroke] },
+      });
+      expect(response.status).toBe(400);
+    }
+
+    expect(await db().stroke.count({ where: { workspaceId: ws.id } })).toBe(0);
   });
 
   it("без токена и без auth — 403", async () => {
@@ -90,6 +208,70 @@ describe("POST /api/strokes — добавление штрихов", () => {
 
     const count = await db().stroke.count({ where: { workspaceId: ws.id } });
     expect(count).toBe(1);
+  });
+
+  it("тот же id с другим содержимым возвращает id_conflict", async () => {
+    const f = await setupBasicFixture();
+    const ws = f.workspaces[0]!;
+    const student = f.students.find((s) => s.id === ws.studentId)!;
+    const id = randomUUID();
+    const original = makeStroke(ws.id, { id, color: "#0c0d10" });
+
+    expect(
+      (
+        await api("POST", "/api/strokes", {
+          anonToken: student.anonToken,
+          body: { strokes: [original] },
+        })
+      ).status,
+    ).toBe(200);
+    const conflict = await api("POST", "/api/strokes", {
+      anonToken: student.anonToken,
+      body: { strokes: [makeStroke(ws.id, { id, color: "#d11a2a" })] },
+    });
+
+    expect(conflict.status).toBe(409);
+    expect(conflict.body).toMatchObject({ error: "id_conflict" });
+    expect(
+      await db().stroke.findUnique({ where: { id }, select: { color: true } }),
+    ).toEqual({ color: "#0c0d10" });
+  });
+
+  it("после сдачи подтверждает только точный идемпотентный replay", async () => {
+    const f = await setupBasicFixture();
+    const ws = f.workspaces[0]!;
+    const student = f.students.find((s) => s.id === ws.studentId)!;
+    const stroke = makeStroke(ws.id);
+
+    expect(
+      (
+        await api("POST", "/api/strokes", {
+          anonToken: student.anonToken,
+          body: { strokes: [stroke] },
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await api("POST", `/api/workspaces/${ws.id}/submit`, {
+          anonToken: student.anonToken,
+        })
+      ).status,
+    ).toBe(200);
+
+    const replay = await api("POST", "/api/strokes", {
+      anonToken: student.anonToken,
+      body: { strokes: [stroke] },
+    });
+    expect(replay.status).toBe(200);
+    expect(replay.body).toMatchObject({ ok: true, replayed: true });
+
+    const newStroke = await api("POST", "/api/strokes", {
+      anonToken: student.anonToken,
+      body: { strokes: [makeStroke(ws.id)] },
+    });
+    expect(newStroke.status).toBe(409);
+    expect(newStroke.body).toMatchObject({ error: "already_submitted" });
   });
 
   it("на закрытой сессии — 410", async () => {
@@ -144,6 +326,30 @@ describe("POST /api/strokes — добавление штрихов", () => {
     const stroke = await db().stroke.findFirst({ where: { workspaceId: ws.id } });
     expect(stroke?.authorRole).toBe("student");
     expect(stroke?.layer).toBe("student");
+  });
+
+  it("после сдачи ученик не может добавить штрих и статус остаётся submitted", async () => {
+    const f = await setupBasicFixture();
+    const ws = f.workspaces[0]!;
+    const student = f.students.find((s) => s.id === ws.studentId)!;
+
+    const submit = await api("POST", `/api/workspaces/${ws.id}/submit`, {
+      anonToken: student.anonToken,
+    });
+    expect(submit.status).toBe(200);
+
+    const r = await api("POST", "/api/strokes", {
+      anonToken: student.anonToken,
+      body: { strokes: [makeStroke(ws.id)] },
+    });
+    expect(r.status).toBe(409);
+    expect(r.body).toMatchObject({ error: "already_submitted" });
+
+    const fresh = await db().workspace.findUnique({ where: { id: ws.id } });
+    expect(fresh?.status).toBe("submitted");
+    expect(
+      await db().stroke.count({ where: { workspaceId: ws.id } }),
+    ).toBe(0);
   });
 });
 
@@ -224,6 +430,13 @@ describe("POST /api/strokes/delete — soft delete", () => {
       anonToken: student.anonToken,
       body: { strokes: [s] },
     });
+    const beforeDelete = await api(
+      "GET",
+      `/api/workspaces/${ws.id}/strokes`,
+      { anonToken: student.anonToken },
+    );
+    const deleteCursor = (beforeDelete.body as { now: string }).now;
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     const r = await api("POST", "/api/strokes/delete", {
       anonToken: student.anonToken,
@@ -236,6 +449,16 @@ describe("POST /api/strokes/delete — soft delete", () => {
       anonToken: student.anonToken,
     });
     expect((get.body as { strokes: unknown[] }).strokes).toHaveLength(0);
+
+    const incremental = await api(
+      "GET",
+      `/api/workspaces/${ws.id}/strokes?since=${encodeURIComponent(deleteCursor)}`,
+      { anonToken: student.anonToken },
+    );
+    expect(incremental.status).toBe(200);
+    expect(
+      (incremental.body as { deletedStrokeIds: string[] }).deletedStrokeIds,
+    ).toContain(s.id);
 
     // но в БД штрих не удалён — только помечен deletedAt
     const rowsInDb = await db().stroke.count({ where: { workspaceId: ws.id } });
@@ -305,5 +528,86 @@ describe("POST /api/strokes/delete — soft delete", () => {
       body: { workspaceId: ws.id, strokeIds: [] },
     });
     expect(r.status).toBe(400);
+  });
+
+  it("после сдачи ученик не может удалить свой штрих", async () => {
+    const f = await setupBasicFixture();
+    const ws = f.workspaces[0]!;
+    const student = f.students.find((s) => s.id === ws.studentId)!;
+    const stroke = makeStroke(ws.id);
+
+    await api("POST", "/api/strokes", {
+      anonToken: student.anonToken,
+      body: { strokes: [stroke] },
+    });
+    await api("POST", `/api/workspaces/${ws.id}/submit`, {
+      anonToken: student.anonToken,
+    });
+
+    const r = await api("POST", "/api/strokes/delete", {
+      anonToken: student.anonToken,
+      body: { workspaceId: ws.id, strokeIds: [stroke.id] },
+    });
+    expect(r.status).toBe(409);
+    expect(r.body).toMatchObject({ error: "already_submitted" });
+
+    const fresh = await db().stroke.findUnique({ where: { id: stroke.id } });
+    expect(fresh?.deletedAt).toBeNull();
+  });
+
+  it("после сдачи подтверждает replay уже выполненного delete", async () => {
+    const f = await setupBasicFixture();
+    const ws = f.workspaces[0]!;
+    const student = f.students.find((s) => s.id === ws.studentId)!;
+    const stroke = makeStroke(ws.id);
+
+    await api("POST", "/api/strokes", {
+      anonToken: student.anonToken,
+      body: { strokes: [stroke] },
+    });
+    expect(
+      (
+        await api("POST", "/api/strokes/delete", {
+          anonToken: student.anonToken,
+          body: { workspaceId: ws.id, strokeIds: [stroke.id] },
+        })
+      ).status,
+    ).toBe(200);
+    await api("POST", `/api/workspaces/${ws.id}/submit`, {
+      anonToken: student.anonToken,
+    });
+
+    const replay = await api("POST", "/api/strokes/delete", {
+      anonToken: student.anonToken,
+      body: { workspaceId: ws.id, strokeIds: [stroke.id] },
+    });
+    expect(replay.status).toBe(200);
+    expect(replay.body).toMatchObject({ ok: true, replayed: true });
+  });
+
+  it("во время заморозки ученик не может удалить свой штрих", async () => {
+    const f = await setupBasicFixture();
+    const ws = f.workspaces[0]!;
+    const student = f.students.find((s) => s.id === ws.studentId)!;
+    const stroke = makeStroke(ws.id);
+
+    await api("POST", "/api/strokes", {
+      anonToken: student.anonToken,
+      body: { strokes: [stroke] },
+    });
+    await db().session.update({
+      where: { id: f.session.id },
+      data: { freezeUntil: new Date(Date.now() + 60_000) },
+    });
+
+    const r = await api("POST", "/api/strokes/delete", {
+      anonToken: student.anonToken,
+      body: { workspaceId: ws.id, strokeIds: [stroke.id] },
+    });
+    expect(r.status).toBe(423);
+    expect(r.body).toMatchObject({ error: "frozen" });
+
+    const fresh = await db().stroke.findUnique({ where: { id: stroke.id } });
+    expect(fresh?.deletedAt).toBeNull();
   });
 });

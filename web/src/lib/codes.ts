@@ -15,7 +15,8 @@ export function generateJoinCode(): string {
 }
 
 /**
- * Анонимный токен ученика — длинная случайная строка для localStorage.
+ * Legacy-идентификатор ученика. Не использовать для авторизации.
+ * Доступ к работе выдаётся workspace-scoped через HttpOnly cookie.
  * В Node 18+ и современных браузерах globalThis.crypto.randomUUID доступен всегда.
  */
 export function generateAnonToken(): string {

@@ -21,6 +21,7 @@ function GridBg({ className }: { className?: string }) {
       className={className}
       width="100%"
       height="100%"
+      viewBox="0 0 1000 700"
       xmlns="http://www.w3.org/2000/svg"
       preserveAspectRatio="none"
     >
@@ -29,7 +30,7 @@ function GridBg({ className }: { className?: string }) {
           <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#d8dee9" strokeWidth="1" />
         </pattern>
       </defs>
-      <rect width="100%" height="100%" fill="url(#grid24)" />
+      <rect width="1000" height="700" fill="url(#grid24)" />
     </svg>
   );
 }
@@ -40,6 +41,7 @@ function CoordBg({ className }: { className?: string }) {
       className={className}
       width="100%"
       height="100%"
+      viewBox="0 0 1000 700"
       xmlns="http://www.w3.org/2000/svg"
       preserveAspectRatio="none"
     >
@@ -51,11 +53,11 @@ function CoordBg({ className }: { className?: string }) {
           <path d="M 96 0 L 0 0 0 96" fill="none" stroke="#c0c8d4" strokeWidth="1" />
         </pattern>
       </defs>
-      <rect width="100%" height="100%" fill="url(#coord24)" />
-      <rect width="100%" height="100%" fill="url(#coordMajor)" />
+      <rect width="1000" height="700" fill="url(#coord24)" />
+      <rect width="1000" height="700" fill="url(#coordMajor)" />
       {/* Оси симулируем в центре */}
-      <line x1="50%" y1="0" x2="50%" y2="100%" stroke="#6b7280" strokeWidth="1.5" />
-      <line x1="0" y1="50%" x2="100%" y2="50%" stroke="#6b7280" strokeWidth="1.5" />
+      <line x1="500" y1="0" x2="500" y2="700" stroke="#6b7280" strokeWidth="1.5" />
+      <line x1="0" y1="350" x2="1000" y2="350" stroke="#6b7280" strokeWidth="1.5" />
     </svg>
   );
 }
@@ -66,15 +68,16 @@ function LinedBg({ className }: { className?: string }) {
       className={className}
       width="100%"
       height="100%"
+      viewBox="0 0 1000 700"
       xmlns="http://www.w3.org/2000/svg"
       preserveAspectRatio="none"
     >
       <defs>
-        <pattern id="lined32" width="100%" height="32" patternUnits="userSpaceOnUse">
-          <line x1="0" y1="32" x2="100%" y2="32" stroke="#d8dee9" strokeWidth="1" />
+        <pattern id="lined32" width="1000" height="32" patternUnits="userSpaceOnUse">
+          <line x1="0" y1="32" x2="1000" y2="32" stroke="#d8dee9" strokeWidth="1" />
         </pattern>
       </defs>
-      <rect width="100%" height="100%" fill="url(#lined32)" />
+      <rect width="1000" height="700" fill="url(#lined32)" />
     </svg>
   );
 }

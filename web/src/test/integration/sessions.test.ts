@@ -73,17 +73,15 @@ describe("GET /api/sessions/[id]/state", () => {
 
     // первый ученик поднимает руку
     const ws0 = session.workspaces[0]!;
-    const student0 = klass.students.find((s) => s.id === ws0.studentId)!;
     await api("POST", `/api/workspaces/${ws0.id}/hand`, {
-      anonToken: student0.anonToken,
+      anonToken: ws0.accessCookie,
       body: { raised: true },
     });
 
     // второй ученик сдаёт работу
     const ws1 = session.workspaces[1]!;
-    const student1 = klass.students.find((s) => s.id === ws1.studentId)!;
     await api("POST", `/api/workspaces/${ws1.id}/submit`, {
-      anonToken: student1.anonToken,
+      anonToken: ws1.accessCookie,
     });
 
     const cookies = await loginAsTeacher(email, password);
@@ -110,13 +108,17 @@ describe("POST /api/sessions/[id]/broadcast", () => {
   const broadcastBody = {
     strokes: [
       {
+        id: "broadcast-stroke-00000001",
         pageIndex: 0,
         color: "#d11a2a",
-        size: 4,
+        size: 0.02,
         simulatePressure: false,
+        coordinateSpace: "normalized",
+        brushKind: "shape",
+        renderVersion: 2,
         points: [
-          [10, 10, 0.5],
-          [20, 20, 0.6],
+          [0.1, 0.1, 0.5],
+          [0.2, 0.2, 0.6],
         ],
       },
     ],
@@ -158,8 +160,13 @@ describe("POST /api/sessions/[id]/broadcast", () => {
       body: broadcastBody,
     });
     expect(r.status).toBe(200);
+    const retry = await api("POST", `/api/sessions/${session.id}/broadcast`, {
+      cookies,
+      body: broadcastBody,
+    });
+    expect(retry.status).toBe(200);
 
-    // Должно быть по 1 штриху в каждом workspace, все layer=teacher
+    // Повтор того же client id идемпотентен: по 1 штриху на workspace.
     for (const ws of session.workspaces) {
       const strokes = await db().stroke.findMany({
         where: { workspaceId: ws.id, deletedAt: null },
@@ -168,6 +175,9 @@ describe("POST /api/sessions/[id]/broadcast", () => {
       expect(strokes[0]!.layer).toBe("teacher");
       expect(strokes[0]!.authorRole).toBe("teacher");
       expect(strokes[0]!.color).toBe("#d11a2a");
+      expect(strokes[0]!.coordinateSpace).toBe("normalized");
+      expect(strokes[0]!.brushKind).toBe("shape");
+      expect(strokes[0]!.renderVersion).toBe(2);
     }
   });
 

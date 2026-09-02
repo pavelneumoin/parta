@@ -7,6 +7,10 @@ import {
   disconnect,
   setupBasicFixture,
 } from "../helpers";
+import {
+  deriveWorkspaceJoinPin,
+  studentAccessCookieName,
+} from "@/lib/studentAccess";
 
 // 1×1 white PNG
 const TINY_PNG_BASE64 =
@@ -110,6 +114,25 @@ describe("POST /api/workspaces/[id]/hand — поднять/опустить р�
     });
     expect(r.status).toBe(410);
   });
+
+  it("после сдачи ученик не может изменить состояние поднятой руки", async () => {
+    const f = await setupBasicFixture();
+    const ws = f.workspaces[0]!;
+    const student = f.students.find((s) => s.id === ws.studentId)!;
+
+    await api("POST", `/api/workspaces/${ws.id}/submit`, {
+      anonToken: student.anonToken,
+    });
+    const r = await api("POST", `/api/workspaces/${ws.id}/hand`, {
+      anonToken: student.anonToken,
+      body: { raised: true },
+    });
+
+    expect(r.status).toBe(409);
+    expect(r.body).toMatchObject({ error: "already_submitted" });
+    const fresh = await db().workspace.findUnique({ where: { id: ws.id } });
+    expect(fresh?.handRaisedAt).toBeNull();
+  });
 });
 
 describe("POST /api/workspaces/[id]/submit — сдать работу", () => {
@@ -148,6 +171,40 @@ describe("POST /api/workspaces/[id]/submit — сдать работу", () => {
       where: { workspaceId: ws.id, kind: "submitted" },
     });
     expect(log).not.toBeNull();
+  });
+
+  it("повтор submit идемпотентен после потерянного ответа", async () => {
+    const f = await setupBasicFixture();
+    const ws = f.workspaces[0]!;
+    const student = f.students.find((s) => s.id === ws.studentId)!;
+
+    const first = await api("POST", `/api/workspaces/${ws.id}/submit`, {
+      anonToken: student.anonToken,
+    });
+    expect(first.status).toBe(200);
+    const afterFirst = await db().workspace.findUnique({
+      where: { id: ws.id },
+      select: { submittedAt: true },
+    });
+
+    const retry = await api("POST", `/api/workspaces/${ws.id}/submit`, {
+      anonToken: student.anonToken,
+    });
+    expect(retry.status).toBe(200);
+    expect(retry.body).toMatchObject({ ok: true, alreadySubmitted: true });
+
+    const afterRetry = await db().workspace.findUnique({
+      where: { id: ws.id },
+      select: { submittedAt: true },
+    });
+    expect(afterRetry?.submittedAt?.toISOString()).toBe(
+      afterFirst?.submittedAt?.toISOString(),
+    );
+    expect(
+      await db().activityLog.count({
+        where: { workspaceId: ws.id, kind: "submitted" },
+      }),
+    ).toBe(1);
   });
 
   it("без токена — 403", async () => {
@@ -269,6 +326,41 @@ describe("POST /api/workspaces/[id]/preview — загрузка снимка", 
     });
     expect(r.status).toBe(410);
   });
+
+  it("после сдачи ученик не может подменить превью", async () => {
+    const f = await setupBasicFixture();
+    const ws = f.workspaces[0]!;
+    const student = f.students.find((s) => s.id === ws.studentId)!;
+    await api("POST", `/api/workspaces/${ws.id}/submit`, {
+      anonToken: student.anonToken,
+    });
+
+    const r = await api("POST", `/api/workspaces/${ws.id}/preview`, {
+      anonToken: student.anonToken,
+      body: { pageIndex: 0, pngBase64: TINY_PNG_BASE64 },
+    });
+
+    expect(r.status).toBe(409);
+    expect(r.body).toMatchObject({ error: "already_submitted" });
+  });
+
+  it("во время заморозки ученик не может обновить превью", async () => {
+    const f = await setupBasicFixture();
+    const ws = f.workspaces[0]!;
+    const student = f.students.find((s) => s.id === ws.studentId)!;
+    await db().session.update({
+      where: { id: f.session.id },
+      data: { freezeUntil: new Date(Date.now() + 60_000) },
+    });
+
+    const r = await api("POST", `/api/workspaces/${ws.id}/preview`, {
+      anonToken: student.anonToken,
+      body: { pageIndex: 0, pngBase64: TINY_PNG_BASE64 },
+    });
+
+    expect(r.status).toBe(423);
+    expect(r.body).toMatchObject({ error: "frozen" });
+  });
 });
 
 describe("GET /api/workspaces/[id]/preview — отдача PNG", () => {
@@ -314,48 +406,226 @@ describe("GET /api/workspaces/[id]/preview — отдача PNG", () => {
 });
 
 describe("POST /api/workspaces/[id]/join — отметка факта входа", () => {
-  it("ставит status=active + joinedAt", async () => {
+  async function releaseWorkspace(workspaceId: string) {
+    await db().workspace.update({
+      where: { id: workspaceId },
+      data: {
+        studentAccessHash: null,
+        studentAccessExpiresAt: null,
+        claimedAt: null,
+      },
+    });
+  }
+
+  it("ставит status=active + joinedAt и выдаёт HttpOnly cookie", async () => {
     const f = await setupBasicFixture();
     const ws = f.workspaces[0]!;
-    const student = f.students.find((s) => s.id === ws.studentId)!;
+    await releaseWorkspace(ws.id);
+
     const r = await api("POST", `/api/workspaces/${ws.id}/join`, {
-      anonToken: student.anonToken,
+      body: {
+        credential: f.session.joinCode,
+        studentId: ws.studentId,
+        pin: deriveWorkspaceJoinPin(
+          ws.id,
+          f.workspaces.map((item) => item.id),
+        ),
+      },
     });
     expect(r.status).toBe(200);
+    const setCookie = r.headers.get("set-cookie") ?? "";
+    expect(setCookie).toContain(`parta_student_access_${ws.id}=`);
+    expect(setCookie.toLowerCase()).toContain("httponly");
+    expect(setCookie.toLowerCase()).toContain("samesite=lax");
 
     const fresh = await db().workspace.findUnique({ where: { id: ws.id } });
     expect(fresh?.status).toBe("active");
     expect(fresh?.joinedAt).not.toBeNull();
+    expect(fresh?.studentAccessHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it("повторный join не сбрасывает joinedAt", async () => {
+  it("повторный join с выданной cookie не сбрасывает joinedAt", async () => {
     const f = await setupBasicFixture();
     const ws = f.workspaces[0]!;
-    const student = f.students.find((s) => s.id === ws.studentId)!;
+    await releaseWorkspace(ws.id);
 
-    await api("POST", `/api/workspaces/${ws.id}/join`, {
-      anonToken: student.anonToken,
+    const first = await api("POST", `/api/workspaces/${ws.id}/join`, {
+      body: {
+        credential: f.session.joinCode,
+        studentId: ws.studentId,
+        pin: deriveWorkspaceJoinPin(
+          ws.id,
+          f.workspaces.map((item) => item.id),
+        ),
+      },
     });
+    expect(first.status).toBe(200);
+    const cookie = (first.headers.get("set-cookie") ?? "").split(";")[0]!;
+    expect(cookie).toContain(`parta_student_access_${ws.id}=`);
+
     const t1 = (await db().workspace.findUnique({ where: { id: ws.id } }))!
       .joinedAt!;
 
     await new Promise((r) => setTimeout(r, 30));
-    await api("POST", `/api/workspaces/${ws.id}/join`, {
-      anonToken: student.anonToken,
+    const second = await api("POST", `/api/workspaces/${ws.id}/join`, {
+      cookies: cookie,
+      body: {
+        credential: f.session.joinCode,
+        studentId: ws.studentId,
+        pin: deriveWorkspaceJoinPin(
+          ws.id,
+          f.workspaces.map((item) => item.id),
+        ),
+      },
     });
+    expect(second.status).toBe(200);
+
     const t2 = (await db().workspace.findUnique({ where: { id: ws.id } }))!
       .joinedAt!;
     expect(t1.getTime()).toBe(t2.getTime());
+  });
+
+  it("второе устройство не может забрать уже открытый workspace", async () => {
+    const f = await setupBasicFixture();
+    const ws = f.workspaces[0]!;
+    await releaseWorkspace(ws.id);
+    const body = {
+      credential: f.session.joinCode,
+      studentId: ws.studentId,
+      pin: deriveWorkspaceJoinPin(
+        ws.id,
+        f.workspaces.map((item) => item.id),
+      ),
+    };
+
+    const first = await api("POST", `/api/workspaces/${ws.id}/join`, { body });
+    expect(first.status).toBe(200);
+
+    const secondDevice = await api("POST", `/api/workspaces/${ws.id}/join`, {
+      body,
+    });
+    expect(secondDevice.status).toBe(409);
+  });
+
+  it("при одновременном первом входе доступ получает только одно устройство", async () => {
+    const f = await setupBasicFixture();
+    const ws = f.workspaces[0]!;
+    await releaseWorkspace(ws.id);
+    const body = {
+      credential: f.session.joinCode,
+      studentId: ws.studentId,
+      pin: deriveWorkspaceJoinPin(
+        ws.id,
+        f.workspaces.map((item) => item.id),
+      ),
+    };
+
+    const results = await Promise.all([
+      api("POST", `/api/workspaces/${ws.id}/join`, { body }),
+      api("POST", `/api/workspaces/${ws.id}/join`, { body }),
+    ]);
+
+    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+  });
+
+  it("неверный код не выдаёт доступ", async () => {
+    const f = await setupBasicFixture();
+    const ws = f.workspaces[0]!;
+    await releaseWorkspace(ws.id);
+
+    const r = await api("POST", `/api/workspaces/${ws.id}/join`, {
+      body: {
+        credential: "000000",
+        studentId: ws.studentId,
+        pin: deriveWorkspaceJoinPin(
+          ws.id,
+          f.workspaces.map((item) => item.id),
+        ),
+      },
+    });
+    expect([401, 403]).toContain(r.status);
+    expect(r.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("общий код без правильного личного PIN не позволяет занять чужой лист", async () => {
+    const f = await setupBasicFixture();
+    const ws = f.workspaces[0]!;
+    await releaseWorkspace(ws.id);
+    const actualPin = deriveWorkspaceJoinPin(
+      ws.id,
+      f.workspaces.map((item) => item.id),
+    );
+    const wrongPin = actualPin === "9999" ? "0000" : "9999";
+
+    const r = await api("POST", `/api/workspaces/${ws.id}/join`, {
+      body: {
+        credential: f.session.joinCode,
+        studentId: ws.studentId,
+        pin: wrongPin,
+      },
+    });
+
+    expect(r.status).toBe(403);
+    expect(r.headers.get("set-cookie")).toBeNull();
+    const fresh = await db().workspace.findUnique({ where: { id: ws.id } });
+    expect(fresh?.studentAccessHash).toBeNull();
+  });
+
+  it("один браузер сохраняет доступ сразу к нескольким заданиям", async () => {
+    const f = await setupBasicFixture();
+    const first = f.workspaces[0]!;
+    const second = f.workspaces[1]!;
+    const cookieJar = [
+      `${studentAccessCookieName(first.id)}=${first.accessCookie}`,
+      `${studentAccessCookieName(second.id)}=${second.accessCookie}`,
+    ].join("; ");
+
+    const firstResult = await api(
+      "GET",
+      `/api/workspaces/${first.id}/strokes`,
+      { cookies: cookieJar },
+    );
+    const secondResult = await api(
+      "GET",
+      `/api/workspaces/${second.id}/strokes`,
+      { cookies: cookieJar },
+    );
+
+    expect(firstResult.status).toBe(200);
+    expect(secondResult.status).toBe(200);
   });
 
   it("закрытая сессия → 410", async () => {
     const f = await setupBasicFixture();
     await closeSession(f.session.id);
     const ws = f.workspaces[0]!;
-    const student = f.students.find((s) => s.id === ws.studentId)!;
+    await releaseWorkspace(ws.id);
+
     const r = await api("POST", `/api/workspaces/${ws.id}/join`, {
-      anonToken: student.anonToken,
+      body: {
+        credential: f.session.joinCode,
+        studentId: ws.studentId,
+        pin: deriveWorkspaceJoinPin(
+          ws.id,
+          f.workspaces.map((item) => item.id),
+        ),
+      },
     });
     expect(r.status).toBe(410);
+  });
+});
+
+describe("GET /j/[code] — публичный выбор ученика", () => {
+  it("не встраивает legacy Student.anonToken в HTML", async () => {
+    const f = await setupBasicFixture();
+    const sentinel = `LEGACY_SECRET_${Date.now()}_MUST_NOT_LEAK`;
+    await db().student.update({
+      where: { id: f.students[0]!.id },
+      data: { anonToken: sentinel },
+    });
+
+    const r = await api("GET", `/j/${f.session.joinCode}`);
+    expect(r.status).toBe(200);
+    expect(String(r.body)).not.toContain(sentinel);
   });
 });

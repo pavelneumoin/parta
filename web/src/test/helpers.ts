@@ -9,6 +9,19 @@
  */
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { vi } from "vitest";
+import {
+  generateStudentAccessSecret,
+  hashStudentAccessSecret,
+  makeStudentAccessCookieValue,
+  parseStudentAccessCookie,
+  studentAccessCookieName,
+} from "@/lib/studentAccess";
+
+// HTTP-интеграции авторизуются на запущенном Next.js-сервере. Внутри самого
+// Vitest нам нужен только чистый crypto-код studentAccess, поэтому не грузим
+// Auth.js (его ESM entrypoint несовместим с node-resolve тестового процесса).
+vi.mock("@/auth", () => ({ auth: vi.fn() }));
 
 export const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:3030";
 
@@ -107,7 +120,32 @@ export async function createSession(opts: {
     },
     include: { workspaces: true },
   });
-  return session;
+
+  // Integration-тесты обращаются к реальным HTTP-роутам. Поэтому каждому
+  // workspace сразу выдаём тот же HttpOnly credential, который в проде
+  // появляется после успешного join. Сам секрет в БД никогда не хранится.
+  const accessExpiresAt = new Date(Date.now() + 60 * 60 * 1000);
+  const workspaces: Array<
+    (typeof session.workspaces)[number] & { accessCookie: string }
+  > = [];
+  for (const workspace of session.workspaces) {
+    const secret = generateStudentAccessSecret();
+    await db().workspace.update({
+      where: { id: workspace.id },
+      data: {
+        studentAccessHash: hashStudentAccessSecret(secret),
+        studentAccessExpiresAt: accessExpiresAt,
+        claimedAt: new Date(),
+      },
+    });
+
+    workspaces.push({
+      ...workspace,
+      accessCookie: makeStudentAccessCookieValue(workspace.id, secret),
+    });
+  }
+
+  return { ...session, workspaces };
 }
 
 export async function closeSession(sessionId: string) {
@@ -178,8 +216,14 @@ export async function api(
   },
 ): Promise<ApiResponse> {
   const headers: Record<string, string> = { ...(opts?.headers ?? {}) };
-  if (opts?.anonToken) headers["x-anon-token"] = opts.anonToken;
-  if (opts?.cookies) headers["cookie"] = opts.cookies;
+  const parsedStudentCookie = parseStudentAccessCookie(opts?.anonToken);
+  const studentCookie = opts?.anonToken
+    ? `${studentAccessCookieName(
+        parsedStudentCookie?.workspaceId ?? "invalid",
+      )}=${opts.anonToken}`
+    : "";
+  const cookies = [opts?.cookies, studentCookie].filter(Boolean).join("; ");
+  if (cookies) headers["cookie"] = cookies;
 
   let body: BodyInit | undefined;
   if (opts?.raw !== undefined) {
@@ -275,13 +319,24 @@ export async function setupBasicFixture() {
     classId: klass.id,
     studentIds: klass.students.map((s) => s.id),
   });
+  const accessByStudentId = new Map(
+    session.workspaces.map((workspace) => [
+      workspace.studentId,
+      workspace.accessCookie,
+    ]),
+  );
 
   return {
     teacher,
     klass,
     lesson,
     session,
-    students: klass.students,
+    // Старое имя поля оставлено только для компактности существующих тестов:
+    // теперь внутри лежит workspace-scoped cookie, а не Student.anonToken.
+    students: klass.students.map((student) => ({
+      ...student,
+      anonToken: accessByStudentId.get(student.id) ?? "",
+    })),
     workspaces: session.workspaces,
   };
 }

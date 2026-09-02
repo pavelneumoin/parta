@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { auth } from "@/auth";
 import { readBuffer } from "@/lib/storage";
+import { resolveStudentWorkspaces } from "@/lib/studentAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
  * Отдаём PDF-файл шаблона.
  * Доступ:
  *  - учитель-владелец TemplateFile;
- *  - ученик с anon-токеном, который привязан к workspace с lesson.templateId = id
+ *  - ученик с активным доступом к workspace с lesson.templateId = id
  *    (то есть его собственная сессия использует именно этот шаблон).
  *
  * Заголовки: application/pdf + длинный cache (шаблон неизменяем).
@@ -32,11 +33,11 @@ export async function GET(
   if (authz?.user?.id && authz.user.id === template.teacherId) {
     allowed = true;
   } else {
-    const anonToken = req.headers.get("x-anon-token") ?? req.nextUrl.searchParams.get("t");
-    if (anonToken) {
+    const studentWorkspaces = await resolveStudentWorkspaces(req);
+    if (studentWorkspaces.length > 0) {
       const ws = await db.workspace.findFirst({
         where: {
-          student: { anonToken },
+          id: { in: studentWorkspaces.map((workspace) => workspace.id) },
           session: { lesson: { templateId: id } },
         },
         select: { id: true },

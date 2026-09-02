@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { auth } from "@/auth";
+import { authorizeWorkspaceRequest } from "@/lib/studentAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,7 @@ const postSchema = z.object({
  * Принимаем PNG-превью текущего состояния ученического холста.
  * Снимки шлёт сам клиент раз в 3-5 сек (когда были изменения).
  *
- * Auth: anon-токен ученика этого workspace.
+ * Доступ: ученик, который вошёл именно в этот workspace.
  */
 export async function POST(
   req: NextRequest,
@@ -33,9 +33,14 @@ export async function POST(
 
   const ws = await db.workspace.findUnique({
     where: { id },
-    include: {
-      student: true,
-      session: { select: { closedAt: true } },
+    select: {
+      id: true,
+      status: true,
+      studentAccessHash: true,
+      studentAccessExpiresAt: true,
+      session: {
+        select: { closedAt: true, teacherId: true, freezeUntil: true },
+      },
     },
   });
   if (!ws) return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -43,9 +48,24 @@ export async function POST(
     return NextResponse.json({ error: "session_closed" }, { status: 410 });
   }
 
-  const anonToken = req.headers.get("x-anon-token");
-  if (!anonToken || anonToken !== ws.student.anonToken) {
+  const viewer = await authorizeWorkspaceRequest(req, ws);
+  if (viewer?.role !== "student") {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+  if (ws.status === "submitted") {
+    return NextResponse.json(
+      { error: "already_submitted" },
+      { status: 409 },
+    );
+  }
+  if (
+    ws.session.freezeUntil &&
+    ws.session.freezeUntil.getTime() > Date.now()
+  ) {
+    return NextResponse.json(
+      { error: "frozen", until: ws.session.freezeUntil.toISOString() },
+      { status: 423 },
+    );
   }
 
   const bytes = Buffer.from(parsed.data.pngBase64, "base64");
@@ -89,21 +109,17 @@ export async function GET(
 
   const ws = await db.workspace.findUnique({
     where: { id },
-    include: {
-      student: true,
+    select: {
+      id: true,
+      studentAccessHash: true,
+      studentAccessExpiresAt: true,
       session: { select: { teacherId: true } },
     },
   });
   if (!ws) return new NextResponse("not_found", { status: 404 });
 
-  const anonToken = req.headers.get("x-anon-token");
-  const isStudent = anonToken && anonToken === ws.student.anonToken;
-  let isTeacher = false;
-  if (!isStudent) {
-    const authz = await auth();
-    isTeacher = !!(authz?.user?.id && authz.user.id === ws.session.teacherId);
-  }
-  if (!isStudent && !isTeacher) {
+  const viewer = await authorizeWorkspaceRequest(req, ws);
+  if (!viewer) {
     return new NextResponse("forbidden", { status: 403 });
   }
 

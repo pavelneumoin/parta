@@ -14,25 +14,27 @@ export function drawPreviewBackground(
   ctx.lineWidth = 0.5;
 
   if (kind === "blank_grid") {
-    const step = 6;
+    const stepX = (w * 24) / 1000;
+    const stepY = (h * 24) / 700;
     ctx.beginPath();
-    for (let x = step; x < w; x += step) {
+    for (let x = stepX; x < w; x += stepX) {
       ctx.moveTo(x + 0.5, 0);
       ctx.lineTo(x + 0.5, h);
     }
-    for (let y = step; y < h; y += step) {
+    for (let y = stepY; y < h; y += stepY) {
       ctx.moveTo(0, y + 0.5);
       ctx.lineTo(w, y + 0.5);
     }
     ctx.stroke();
   } else if (kind === "blank_coord") {
-    const step = 6;
+    const stepX = (w * 24) / 1000;
+    const stepY = (h * 24) / 700;
     ctx.beginPath();
-    for (let x = step; x < w; x += step) {
+    for (let x = stepX; x < w; x += stepX) {
       ctx.moveTo(x + 0.5, 0);
       ctx.lineTo(x + 0.5, h);
     }
-    for (let y = step; y < h; y += step) {
+    for (let y = stepY; y < h; y += stepY) {
       ctx.moveTo(0, y + 0.5);
       ctx.lineTo(w, y + 0.5);
     }
@@ -47,7 +49,7 @@ export function drawPreviewBackground(
     ctx.lineTo(w, h / 2 + 0.5);
     ctx.stroke();
   } else if (kind === "blank_lined") {
-    const step = 10;
+    const step = (h * 32) / 700;
     ctx.beginPath();
     for (let y = step; y < h; y += step) {
       ctx.moveTo(0, y + 0.5);

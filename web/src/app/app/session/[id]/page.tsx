@@ -4,6 +4,7 @@ import { requireTeacher } from "@/lib/session";
 import { db } from "@/lib/db";
 import { qrDataUrl } from "@/lib/qr";
 import { baseUrl } from "@/lib/baseUrl";
+import { deriveWorkspaceJoinPins } from "@/lib/studentAccess";
 import { SessionMosaic } from "./SessionMosaic";
 import { CloseSessionButton } from "./CloseSessionButton";
 import { ExportClassButton } from "./ExportClassButton";
@@ -32,8 +33,11 @@ export default async function SessionPage({
   });
   if (!session) notFound();
 
-  const url = `${await baseUrl()}/j/${session.joinCode}`;
+  const url = `${await baseUrl()}/j/${session.qrToken}`;
   const qr = await qrDataUrl(url);
+  const workspacePins = deriveWorkspaceJoinPins(
+    session.workspaces.map((workspace) => workspace.id),
+  );
 
   return (
     <main className="max-w-7xl mx-auto px-6 py-6">
@@ -96,10 +100,42 @@ export default async function SessionPage({
             <p className="text-paper/60 text-sm mt-2">
               Или диктуйте код{" "}
               <span className="font-mono text-paper">{session.joinCode}</span> на
-              экране входа.
+              экране входа. После выбора фамилии ученик вводит свой личный PIN.
             </p>
           </div>
         </section>
+      )}
+
+      {!session.closedAt && (
+        <details className="mb-6 rounded-xl border border-rule bg-paper">
+          <summary className="cursor-pointer px-5 py-4 font-medium">
+            Личные PIN-коды учеников
+            <span className="ml-2 text-sm font-normal text-dim">
+              показать для раздачи
+            </span>
+          </summary>
+          <div className="border-t border-rule px-5 py-4">
+            <p className="mb-4 text-sm text-dim">
+              Назовите каждому ребёнку только его четыре цифры. PIN действует
+              лишь для этой работы и не отображается на публичной странице.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {session.workspaces.map((workspace) => (
+                <div
+                  key={workspace.id}
+                  className="flex items-center justify-between gap-3 rounded-lg bg-chalk px-3 py-2"
+                >
+                  <span className="min-w-0 truncate text-sm">
+                    {workspace.student.fullName}
+                  </span>
+                  <span className="font-mono text-base font-semibold tracking-widest">
+                    {workspacePins.get(workspace.id)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </details>
       )}
 
       <SessionMosaic sessionId={session.id} />

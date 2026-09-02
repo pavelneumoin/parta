@@ -1,5 +1,7 @@
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { JoinPicker } from "./JoinPicker";
 
 export const dynamic = "force-dynamic";
@@ -10,14 +12,20 @@ export default async function JoinPage({
   params: Promise<{ code: string }>;
 }) {
   const { code } = await params;
-  const session = await db.session.findUnique({
-    where: { joinCode: code.toUpperCase() },
+  const requestHeaders = await headers();
+  const ip = getClientIp(requestHeaders);
+  if (!checkRateLimit(`student-join-page:ip:${ip}`, 60)) notFound();
+
+  const session = await db.session.findFirst({
+    where: {
+      OR: [{ joinCode: code.toUpperCase() }, { qrToken: code }],
+    },
     include: {
       lesson: { select: { title: true } },
       class: {
         include: {
           students: {
-            select: { id: true, fullName: true, anonToken: true },
+            select: { id: true, fullName: true },
             orderBy: { fullName: "asc" },
           },
         },
@@ -58,14 +66,14 @@ export default async function JoinPage({
             Выберите своё имя
           </h1>
           <p className="text-dim mb-6">
-            Нажмите на свою фамилию. Лист откроется только у вас.
+            Нажмите на свою фамилию и введите личный PIN, который назвал
+            учитель.
           </p>
           <JoinPicker
-            sessionCode={code}
+            credential={code}
             students={session.class.students.map((s) => ({
               id: s.id,
-              fullName: s.fullName,
-              anonToken: s.anonToken,
+              fullName: publicStudentLabel(s.fullName),
               workspaceId: workspaceByStudent.get(s.id) ?? "",
             }))}
           />
@@ -73,6 +81,15 @@ export default async function JoinPage({
       </div>
     </main>
   );
+}
+
+function publicStudentLabel(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return fullName;
+  return `${parts[0]} ${parts
+    .slice(1)
+    .map((part) => `${part[0]?.toUpperCase() ?? ""}.`)
+    .join(" ")}`;
 }
 
 function CenteredCard({ children }: { children: React.ReactNode }) {

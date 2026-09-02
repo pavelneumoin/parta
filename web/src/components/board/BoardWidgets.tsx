@@ -20,7 +20,6 @@ type WidgetDto = {
 
 type Props = {
   sessionId: string;
-  token: string | null;      // anon-токен ученика; у учителя null (кука)
   isTeacher: boolean;
   pageIndex: number;
   drawerOpen: boolean;
@@ -30,18 +29,13 @@ type Props = {
 
 const POLL_MS = 3_500;
 const STATE_DEBOUNCE_MS = 450;
+const JSON_HEADERS = { "content-type": "application/json" };
 
 export function BoardWidgets(props: Props) {
   const [widgets, setWidgets] = useState<WidgetDto[]>([]);
   const layerRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef<string | null>(null);
   const debounceRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-
-  const headers = useCallback((): HeadersInit => {
-    const h: Record<string, string> = { "content-type": "application/json" };
-    if (props.token) h["x-anon-token"] = props.token;
-    return h;
-  }, [props.token]);
 
   const base = `/api/sessions/${props.sessionId}/widgets`;
 
@@ -50,7 +44,7 @@ export function BoardWidgets(props: Props) {
     let stop = false;
     const load = async () => {
       try {
-        const r = await fetch(base, { headers: headers(), cache: "no-store" });
+        const r = await fetch(base, { cache: "no-store" });
         if (!r.ok || stop) return;
         const data = (await r.json()) as { widgets: WidgetDto[] };
         setWidgets((old) =>
@@ -67,15 +61,15 @@ export function BoardWidgets(props: Props) {
     load();
     const i = setInterval(load, POLL_MS);
     return () => { stop = true; clearInterval(i); };
-  }, [base, headers]);
+  }, [base]);
 
   /* ---------------- мутации учителя ---------------- */
   const patch = useCallback(
     (id: string, body: Record<string, unknown>) => {
-      fetch(`${base}/${id}`, { method: "PATCH", headers: headers(), body: JSON.stringify(body) })
+      fetch(`${base}/${id}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify(body) })
         .catch(() => {});
     },
-    [base, headers],
+    [base],
   );
 
   const commitState = (id: string, statePatch: Record<string, unknown>) => {
@@ -99,7 +93,7 @@ export function BoardWidgets(props: Props) {
 
   const remove = (id: string) => {
     setWidgets((ws) => ws.filter((w) => w.id !== id));
-    fetch(`${base}/${id}`, { method: "DELETE", headers: headers() }).catch(() => {});
+    fetch(`${base}/${id}`, { method: "DELETE" }).catch(() => {});
   };
 
   const create = async (kind: string) => {
@@ -107,7 +101,7 @@ export function BoardWidgets(props: Props) {
     try {
       const r = await fetch(base, {
         method: "POST",
-        headers: headers(),
+        headers: JSON_HEADERS,
         body: JSON.stringify({
           kind,
           pageIndex: props.pageIndex,

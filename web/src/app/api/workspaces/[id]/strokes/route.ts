@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { auth } from "@/auth";
+import { authorizeWorkspaceRequest } from "@/lib/studentAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -17,26 +17,24 @@ export async function GET(
   const url = new URL(req.url);
   const sinceParam = url.searchParams.get("since");
   const since = sinceParam ? new Date(sinceParam) : null;
+  const cursor = new Date();
 
   const ws = await db.workspace.findUnique({
     where: { id },
-    include: {
-      student: true,
+    select: {
+      id: true,
+      studentAccessHash: true,
+      studentAccessExpiresAt: true,
       session: { select: { teacherId: true, closedAt: true, freezeUntil: true } },
     },
   });
   if (!ws) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  const anonToken = req.headers.get("x-anon-token");
-  const isStudent = anonToken && anonToken === ws.student.anonToken;
-  let isTeacher = false;
-  if (!isStudent) {
-    const authz = await auth();
-    isTeacher = !!(authz?.user?.id && authz.user.id === ws.session.teacherId);
-  }
-  if (!isStudent && !isTeacher) {
+  const viewer = await authorizeWorkspaceRequest(req, ws);
+  if (!viewer) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
+  const isTeacher = viewer.role === "teacher";
 
   // includeDeleted=1 — для replay-режима учителя: видеть процесс исправлений.
   // Доступно только учителю (ученик не должен видеть свои стёртые штрихи).
@@ -46,7 +44,9 @@ export async function GET(
     where: {
       workspaceId: ws.id,
       ...(includeDeleted ? {} : { deletedAt: null }),
-      ...(since ? { createdAt: { gt: since } } : {}),
+      ...(since
+        ? { createdAt: { gt: since, lte: cursor } }
+        : { createdAt: { lte: cursor } }),
     },
     orderBy: { createdAt: "asc" },
     select: {
@@ -57,17 +57,37 @@ export async function GET(
       color: true,
       size: true,
       simulatePressure: true,
+      coordinateSpace: true,
+      brushKind: true,
+      renderVersion: true,
       points: true,
       createdAt: true,
       deletedAt: true,
     },
   });
 
+  // Incremental polling раньше видел только новые create и не узнавал о
+  // soft-delete. Из-за этого стёртая подсказка учителя оставалась у ученика
+  // до полной перезагрузки. Верхняя граница cursor закрывает race между
+  // запросом и следующей итерацией polling.
+  const deletedStrokeIds = since
+    ? (
+        await db.stroke.findMany({
+          where: {
+            workspaceId: ws.id,
+            deletedAt: { gt: since, lte: cursor },
+          },
+          select: { id: true },
+        })
+      ).map((stroke) => stroke.id)
+    : [];
+
   return NextResponse.json({
     workspaceId: ws.id,
     closedAt: ws.session.closedAt,
     freezeUntil: ws.session.freezeUntil ? ws.session.freezeUntil.toISOString() : null,
     strokes,
-    now: new Date().toISOString(),
+    deletedStrokeIds,
+    now: cursor.toISOString(),
   });
 }

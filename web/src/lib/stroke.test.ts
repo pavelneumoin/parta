@@ -1,5 +1,12 @@
 import { describe, expect, it, beforeAll, vi } from "vitest";
-import { strokeToPath, uuid, type StrokeRecord } from "./stroke";
+import {
+  strokePointsForViewport,
+  strokeSizeForViewport,
+  strokeToOutline,
+  strokeToPath,
+  uuid,
+  type StrokeRecord,
+} from "./stroke";
 
 // Path2D — браузерное API. В Node-среде делаем минимальный stub: считаем вызовы
 // и сохраняем, чтобы strokeToPath отработал и можно было утверждать, что он
@@ -44,6 +51,61 @@ describe("strokeToPath", () => {
     expect(p).not.toBeNull();
     expect(p!.ops).toContain("moveTo");
     expect(p!.ops).toContain("lineTo");
+  });
+});
+
+describe("ink v2 coordinate space", () => {
+  const normalizedStroke: StrokeRecord = {
+    ...baseStroke,
+    coordinateSpace: "normalized",
+    brushKind: "pen",
+    renderVersion: 2,
+    size: 0.01,
+    points: [
+      [0.1, 0.2, 0.4],
+      [0.5, 0.8, 0.7],
+    ],
+  };
+
+  it("масштабирует координаты относительно текущего листа", () => {
+    expect(
+      strokePointsForViewport(normalizedStroke, { width: 1000, height: 500 }),
+    ).toEqual([
+      [100, 100, 0.4],
+      [500, 400, 0.7],
+    ]);
+  });
+
+  it("масштабирует толщину по меньшей стороне листа", () => {
+    expect(
+      strokeSizeForViewport(normalizedStroke, { width: 1000, height: 500 }),
+    ).toBe(5);
+  });
+
+  it("live и завершённый контуры строятся без ошибок", () => {
+    expect(
+      strokeToOutline(
+        normalizedStroke,
+        { width: 1000, height: 500 },
+        false,
+      ).length,
+    ).toBeGreaterThan(1);
+    expect(
+      strokeToOutline(
+        normalizedStroke,
+        { width: 1000, height: 500 },
+        true,
+      ).length,
+    ).toBeGreaterThan(1);
+  });
+
+  it("legacy-штрихи сохраняют исходные координаты и толщину", () => {
+    expect(
+      strokePointsForViewport(baseStroke, { width: 2000, height: 1000 }),
+    ).toBe(baseStroke.points);
+    expect(
+      strokeSizeForViewport(baseStroke, { width: 2000, height: 1000 }),
+    ).toBe(baseStroke.size);
   });
 });
 

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { auth } from "@/auth";
 import { INSTRUMENT_KINDS, instrumentMeta } from "@/lib/board/registry";
+import { resolveStudentWorkspaces } from "@/lib/studentAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ const postSchema = z.object({
   state: stateSchema.optional(),
 });
 
-/** Кто смотрит сессию: учитель-владелец или ученик этой сессии (по anon-токену). */
+/** Кто смотрит сессию: учитель-владелец или ученик с доступом к workspace этой сессии. */
 async function resolveViewer(req: NextRequest, sessionId: string) {
   const session = await db.session.findUnique({
     where: { id: sessionId },
@@ -30,16 +31,18 @@ async function resolveViewer(req: NextRequest, sessionId: string) {
   });
   if (!session) return { session: null, teacher: false, workspaceId: null as string | null };
 
-  const anonToken = req.headers.get("x-anon-token");
-  if (anonToken) {
-    const ws = await db.workspace.findFirst({
-      where: { sessionId, student: { anonToken } },
-      select: { id: true },
-    });
-    if (ws) return { session, teacher: false, workspaceId: ws.id };
-  }
   const authz = await auth();
   const teacher = !!(authz?.user?.id && authz.user.id === session.teacherId);
+  if (teacher) {
+    return { session, teacher: true, workspaceId: null as string | null };
+  }
+
+  const studentWorkspaces = await resolveStudentWorkspaces(req);
+  const ws = studentWorkspaces.find((workspace) => workspace.sessionId === sessionId);
+  if (ws?.sessionId === sessionId) {
+    return { session, teacher: false, workspaceId: ws.id };
+  }
+
   return { session, teacher, workspaceId: null as string | null };
 }
 

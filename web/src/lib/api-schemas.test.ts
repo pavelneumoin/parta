@@ -1,33 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import {
+  broadcastStrokesBatchSchema,
+  strokeForBroadcastSchema,
+  strokesBatchSchema,
+} from "@/lib/strokeSchemas";
 
-// Воспроизводим зоd-схемы из API-роутов и проверяем их инвариант.
-// Если схемы в роутах поменяются — эти тесты предупредят о regression.
-
-const strokePoint = z.tuple([z.number(), z.number(), z.number()]);
-
-const strokeForUpload = z.object({
-  id: z.string().min(8).max(64),
-  workspaceId: z.string(),
-  pageIndex: z.number().int().min(0).max(31).default(0),
-  layer: z.enum(["student", "teacher"]).default("student"),
-  color: z.string().regex(/^#[0-9a-fA-F]{3,8}$/),
-  size: z.number().positive().max(40),
-  simulatePressure: z.boolean().default(false),
-  points: z.array(strokePoint).min(2).max(4000),
-});
-
-const strokesBatch = z.object({
-  strokes: z.array(strokeForUpload).max(80),
-});
-
-const strokeForBroadcast = z.object({
-  pageIndex: z.number().int().min(0).max(31).default(0),
-  color: z.string().regex(/^#[0-9a-fA-F]{3,8}$/),
-  size: z.number().positive().max(40),
-  simulatePressure: z.boolean().default(false),
-  points: z.array(strokePoint).min(2).max(4000),
-});
+// Тестируем те же схемы, которые импортируют API-роуты: расхождение между
+// тестовой копией и production-валидацией теперь невозможно.
+const strokesBatch = strokesBatchSchema;
+const strokeForBroadcast = strokeForBroadcastSchema;
 
 const deleteBatch = z.object({
   workspaceId: z.string(),
@@ -51,6 +33,118 @@ describe("strokes batch schema", () => {
       ],
     });
     expect(ok.success).toBe(true);
+    if (ok.success) {
+      expect(ok.data.strokes[0]).toMatchObject({
+        coordinateSpace: "legacy",
+        brushKind: "legacy",
+        renderVersion: 1,
+      });
+    }
+  });
+
+  it("принимает ink v2 и 8-digit hex маркера", () => {
+    const result = strokesBatch.safeParse({
+      strokes: [
+        {
+          id: "550e8400e29b41d4a716446655440000",
+          workspaceId: "ws-1",
+          color: "#ffde3c66",
+          size: 0.02,
+          coordinateSpace: "normalized",
+          brushKind: "marker",
+          renderVersion: 2,
+          points: [[0, 0, 0.5], [1, 1, 0.5]],
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("отвергает выход normalized-координат, pressure и size за диапазон", () => {
+    const base = {
+      id: "550e8400e29b41d4a716446655440000",
+      workspaceId: "ws-1",
+      color: "#000",
+      size: 0.02,
+      coordinateSpace: "normalized" as const,
+      brushKind: "pen" as const,
+      renderVersion: 2 as const,
+      points: [[0, 0, 0.5], [1, 1, 0.5]],
+    };
+    expect(
+      strokesBatch.safeParse({
+        strokes: [{ ...base, points: [[0, 0, 0.5], [1.01, 1, 0.5]] }],
+      }).success,
+    ).toBe(false);
+    expect(
+      strokesBatch.safeParse({
+        strokes: [{ ...base, points: [[0, 0, 0.5], [1, 1, 1.1]] }],
+      }).success,
+    ).toBe(false);
+    expect(
+      strokesBatch.safeParse({
+        strokes: [{ ...base, size: 0.21 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("отвергает несогласованные версии и metadata кисти", () => {
+    const base = {
+      id: "550e8400e29b41d4a716446655440000",
+      workspaceId: "ws-1",
+      color: "#000",
+      size: 0.02,
+      points: [[0, 0, 0.5], [1, 1, 0.5]],
+    };
+    expect(
+      strokesBatch.safeParse({
+        strokes: [
+          {
+            ...base,
+            coordinateSpace: "legacy",
+            brushKind: "pen",
+            renderVersion: 2,
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      strokesBatch.safeParse({
+        strokes: [
+          {
+            ...base,
+            coordinateSpace: "normalized",
+            brushKind: "legacy",
+            renderVersion: 1,
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("отвергает неизвестные ink metadata", () => {
+    const base = {
+      id: "550e8400e29b41d4a716446655440000",
+      workspaceId: "ws-1",
+      color: "#000",
+      size: 4,
+      points: [[0, 0, 0.5], [1, 1, 0.5]],
+    };
+    expect(
+      strokesBatch.safeParse({
+        strokes: [{ ...base, coordinateSpace: "pixels" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      strokesBatch.safeParse({
+        strokes: [{ ...base, brushKind: "airbrush" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      strokesBatch.safeParse({
+        strokes: [{ ...base, renderVersion: 3 }],
+      }).success,
+    ).toBe(false);
   });
 
   it("отвергает короткий ID (< 8)", () => {
@@ -130,13 +224,37 @@ describe("strokes batch schema", () => {
 });
 
 describe("broadcast stroke schema", () => {
-  it("принимает штрих без workspaceId и без id", () => {
+  it("принимает штрих без workspaceId с client id", () => {
     const r = strokeForBroadcast.safeParse({
+      id: "550e8400e29b41d4a716446655440000",
       color: "#d11a2a",
-      size: 4,
+      size: 0.02,
+      coordinateSpace: "normalized",
+      brushKind: "shape",
+      renderVersion: 2,
       points: [[0, 0, 0.5], [1, 1, 0.5]],
     });
     expect(r.success).toBe(true);
+  });
+
+  it("ограничивает broadcast batch двадцатью штрихами", () => {
+    const stroke = {
+      id: "550e8400e29b41d4a716446655440000",
+      color: "#d11a2a",
+      size: 0.02,
+      coordinateSpace: "normalized" as const,
+      brushKind: "shape" as const,
+      renderVersion: 2 as const,
+      points: [[0, 0, 0.5], [1, 1, 0.5]],
+    };
+    expect(
+      broadcastStrokesBatchSchema.safeParse({
+        strokes: Array.from({ length: 21 }, (_, index) => ({
+          ...stroke,
+          id: `broadcast-${String(index).padStart(8, "0")}`,
+        })),
+      }).success,
+    ).toBe(false);
   });
 });
 
